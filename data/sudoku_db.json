@@ -41,6 +41,23 @@
       "avatar": "user_4",
       "createdAt": "2026-10-31T12:00:25.959Z",
       "isGuest": true
+    },
+    "user_1793448921182_997wt": {
+      "id": "user_1793448921182_997wt",
+      "username": "mokhtar555mohammed",
+      "avatar": "user_1",
+      "createdAt": "2026-10-31T12:28:24.922Z",
+      "isGuest": true
+    },
+    "user_1793449916562_janrz": {
+      "id": "user_1793449916562_janrz",
+      "username": "ChampionHero",
+      "email": "champion@example.com",
+      "salt": "9b81fa5dbefffddad79d76cb7f067735",
+      "passwordHash": "e0855606cf2ce85997e4dacf5d2ad3ac640c47f5d115dd0acdb6fd30d24be10517991075c1bb9b840c3ae0123bd3951006ab3108e2a9e9e81bc7d2eb1cae1e1f",
+      "avatar": "user_2",
+      "createdAt": "2026-10-31T12:31:56.562Z",
+      "isGuest": false
     }
   },
   "profiles": {
@@ -139,11 +156,53 @@
       "currentStreak": 0,
       "rating": 1000,
       "rankTitle": "Novice"
+    },
+    "user_1793448921182_997wt": {
+      "userId": "user_1793448921182_997wt",
+      "username": "mokhtar555mohammed",
+      "avatar": "user_1",
+      "createdAt": "2026-10-31T12:28:24.922Z",
+      "matches": 0,
+      "wins": 0,
+      "losses": 0,
+      "draws": 0,
+      "winRate": 0,
+      "correctMoves": 0,
+      "bestStreak": 0,
+      "currentStreak": 0,
+      "rating": 1000,
+      "rankTitle": "Novice"
+    },
+    "user_1793449916562_janrz": {
+      "userId": "user_1793449916562_janrz",
+      "username": "ChampionHero",
+      "avatar": "user_2",
+      "createdAt": "2026-10-31T12:31:56.562Z",
+      "matches": 0,
+      "wins": 0,
+      "losses": 0,
+      "draws": 0,
+      "winRate": 0,
+      "correctMoves": 0,
+      "bestStreak": 0,
+      "currentStreak": 0,
+      "rating": 1000,
+      "rankTitle": "Novice"
     }
   },
   "offlineProgress": {
     "guest_1793448025959_kg49": {
       "userId": "guest_1793448025959_kg49",
+      "unlockedLevel": 1,
+      "levels": {}
+    },
+    "user_1793448921182_997wt": {
+      "userId": "user_1793448921182_997wt",
+      "unlockedLevel": 1,
+      "levels": {}
+    },
+    "user_1793449916562_janrz": {
+      "userId": "user_1793449916562_janrz",
       "unlockedLevel": 1,
       "levels": {}
     }

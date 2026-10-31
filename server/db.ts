@@ -1,10 +1,30 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
+
+export function hashPassword(password: string): { salt: string; hash: string } {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
+  return { salt, hash };
+}
+
+export function verifyPassword(password: string, salt: string, storedHash: string): boolean {
+  try {
+    const hash = crypto.scryptSync(password, salt, 64).toString('hex');
+    const hashBuf = Buffer.from(hash, 'hex');
+    const storedBuf = Buffer.from(storedHash, 'hex');
+    if (hashBuf.length !== storedBuf.length) return false;
+    return crypto.timingSafeEqual(hashBuf, storedBuf);
+  } catch {
+    return false;
+  }
+}
 
 export interface User {
   id: string;
   username: string;
   email?: string;
+  salt?: string;
   passwordHash?: string;
   avatar: string;
   createdAt: string;

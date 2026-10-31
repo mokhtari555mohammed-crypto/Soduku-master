@@ -9,10 +9,15 @@ import { MultiplayerGame } from './components/MultiplayerGame';
 import { LeaderboardView } from './components/LeaderboardView';
 import { ProfileView } from './components/ProfileView';
 import { SettingsModal } from './components/SettingsModal';
+import { AuthScreen } from './components/AuthScreen';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
 
 const MainContent: React.FC = () => {
-  const { screen, toastMessage } = useGame();
+  const { user, screen, toastMessage } = useGame();
+
+  if (!user) {
+    return <AuthScreen />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors selection:bg-indigo-500 selection:text-white pb-10">

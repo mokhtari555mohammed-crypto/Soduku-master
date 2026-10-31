@@ -154,26 +154,38 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [lang, theme]);
 
-  // Initialize User (Guest or Saved)
+  // Initialize User from saved session (No automatic guest bypass)
   useEffect(() => {
     const savedUserId = localStorage.getItem('sudoku_user_id');
-    const initUser = async () => {
+    if (!savedUserId) {
+      setUser(null);
+      setProfile(null);
+      return;
+    }
+
+    const loadSavedUser = async () => {
       try {
-        const res = await fetch('/api/auth/guest', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            guestId: savedUserId || undefined,
-          }),
-        });
+        const res = await fetch(`/api/profile/${savedUserId}`);
+        if (!res.ok) {
+          localStorage.removeItem('sudoku_user_id');
+          setUser(null);
+          setProfile(null);
+          return;
+        }
+
         const data = await res.json();
-        if (data.user) {
-          setUser(data.user);
+        if (data.profile) {
           setProfile(data.profile);
-          localStorage.setItem('sudoku_user_id', data.user.id);
+          setUser({
+            id: data.profile.userId,
+            username: data.profile.username,
+            avatar: data.profile.avatar,
+            createdAt: data.profile.createdAt,
+            isGuest: false,
+          });
 
           // Fetch offline progress
-          const progRes = await fetch(`/api/offline/progress/${data.user.id}`);
+          const progRes = await fetch(`/api/offline/progress/${data.profile.userId}`);
           const progData = await progRes.json();
           if (progData.progress) {
             setOfflineProgress(progData.progress);
@@ -181,10 +193,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
       } catch (err) {
-        console.error('Failed to init user:', err);
+        console.error('Failed to load saved user session:', err);
       }
     };
-    initUser();
+    loadSavedUser();
   }, []);
 
   // WebSocket Connection & Reconnection
@@ -417,7 +429,12 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logoutUser = () => {
     localStorage.removeItem('sudoku_user_id');
-    window.location.reload();
+    setUser(null);
+    setProfile(null);
+    setScreen('home');
+    if (wsRef.current) {
+      wsRef.current.close();
+    }
   };
 
   // Offline Level Completion

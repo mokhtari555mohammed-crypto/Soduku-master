@@ -10,6 +10,7 @@ import {
   User as UserIcon,
   Trophy,
   Settings,
+  LogOut,
 } from 'lucide-react';
 import { sound } from '../utils/sound';
 
@@ -24,6 +25,7 @@ export const Header: React.FC = () => {
     screen,
     setScreen,
     profile,
+    logoutUser,
     t,
   } = useGame();
 
@@ -147,10 +149,22 @@ export const Header: React.FC = () => {
           {/* Settings modal trigger */}
           <button
             onClick={() => handleNav('settings')}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             title={t.settings}
           >
             <Settings className="w-4 h-4" />
+          </button>
+
+          {/* Logout button */}
+          <button
+            onClick={() => {
+              sound.playClick();
+              logoutUser();
+            }}
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+            title={t.logout}
+          >
+            <LogOut className="w-4 h-4" />
           </button>
         </div>
       </div>
