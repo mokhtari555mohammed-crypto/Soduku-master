@@ -1,0 +1,6 @@
+{
+  "name": "Sudoku Master - Online & Offline",
+  "description": "سودوكو احترافية - العب 100 مستوى أوفلاين وتنافس أونلاين في الوقت الحقيقي مع الأصدقاء واللاعبين حول العالم.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,153 @@
+{
+  "users": {
+    "champ_1": {
+      "id": "champ_1",
+      "username": "طارق_الأسطورة",
+      "avatar": "user_1",
+      "createdAt": "2026-10-01T12:00:11.018Z",
+      "isGuest": false
+    },
+    "champ_2": {
+      "id": "champ_2",
+      "username": "Sarah_Mind",
+      "avatar": "user_2",
+      "createdAt": "2026-10-01T12:00:11.018Z",
+      "isGuest": false
+    },
+    "champ_3": {
+      "id": "champ_3",
+      "username": "سودوكو_ماستر",
+      "avatar": "user_3",
+      "createdAt": "2026-10-01T12:00:11.018Z",
+      "isGuest": false
+    },
+    "champ_4": {
+      "id": "champ_4",
+      "username": "Kareem_Logic",
+      "avatar": "user_4",
+      "createdAt": "2026-10-01T12:00:11.018Z",
+      "isGuest": false
+    },
+    "champ_5": {
+      "id": "champ_5",
+      "username": "Noura_Pro",
+      "avatar": "user_5",
+      "createdAt": "2026-10-01T12:00:11.018Z",
+      "isGuest": false
+    },
+    "guest_1793448025959_kg49": {
+      "id": "guest_1793448025959_kg49",
+      "username": "TestPlayer",
+      "avatar": "user_4",
+      "createdAt": "2026-10-31T12:00:25.959Z",
+      "isGuest": true
+    }
+  },
+  "profiles": {
+    "champ_1": {
+      "userId": "champ_1",
+      "username": "طارق_الأسطورة",
+      "avatar": "user_1",
+      "createdAt": "2026-10-01T12:00:11.018Z",
+      "matches": 54,
+      "wins": 48,
+      "losses": 6,
+      "draws": 0,
+      "winRate": 89,
+      "correctMoves": 412,
+      "bestStreak": 12,
+      "currentStreak": 2,
+      "rating": 2150,
+      "rankTitle": "Grandmaster"
+    },
+    "champ_2": {
+      "userId": "champ_2",
+      "username": "Sarah_Mind",
+      "avatar": "user_2",
+      "createdAt": "2026-10-01T12:00:11.018Z",
+      "matches": 50,
+      "wins": 42,
+      "losses": 8,
+      "draws": 0,
+      "winRate": 84,
+      "correctMoves": 380,
+      "bestStreak": 9,
+      "currentStreak": 2,
+      "rating": 1980,
+      "rankTitle": "Master"
+    },
+    "champ_3": {
+      "userId": "champ_3",
+      "username": "سودوكو_ماستر",
+      "avatar": "user_3",
+      "createdAt": "2026-10-01T12:00:11.018Z",
+      "matches": 45,
+      "wins": 36,
+      "losses": 9,
+      "draws": 0,
+      "winRate": 80,
+      "correctMoves": 320,
+      "bestStreak": 8,
+      "currentStreak": 2,
+      "rating": 1890,
+      "rankTitle": "Master"
+    },
+    "champ_4": {
+      "userId": "champ_4",
+      "username": "Kareem_Logic",
+      "avatar": "user_4",
+      "createdAt": "2026-10-01T12:00:11.018Z",
+      "matches": 38,
+      "wins": 29,
+      "losses": 9,
+      "draws": 0,
+      "winRate": 76,
+      "correctMoves": 275,
+      "bestStreak": 6,
+      "currentStreak": 2,
+      "rating": 1720,
+      "rankTitle": "Master"
+    },
+    "champ_5": {
+      "userId": "champ_5",
+      "username": "Noura_Pro",
+      "avatar": "user_5",
+      "createdAt": "2026-10-01T12:00:11.018Z",
+      "matches": 34,
+      "wins": 25,
+      "losses": 9,
+      "draws": 0,
+      "winRate": 74,
+      "correctMoves": 230,
+      "bestStreak": 5,
+      "currentStreak": 2,
+      "rating": 1640,
+      "rankTitle": "Master"
+    },
+    "guest_1793448025959_kg49": {
+      "userId": "guest_1793448025959_kg49",
+      "username": "TestPlayer",
+      "avatar": "user_4",
+      "createdAt": "2026-10-31T12:00:25.959Z",
+      "matches": 0,
+      "wins": 0,
+      "losses": 0,
+      "draws": 0,
+      "winRate": 0,
+      "correctMoves": 0,
+      "bestStreak": 0,
+      "currentStreak": 0,
+      "rating": 1000,
+      "rankTitle": "Novice"
+    }
+  },
+  "offlineProgress": {
+    "guest_1793448025959_kg49": {
+      "userId": "guest_1793448025959_kg49",
+      "unlockedLevel": 1,
+      "levels": {}
+    }
+  },
+  "rooms": {},
+  "matches": {}
+}
