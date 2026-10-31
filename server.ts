@@ -63,22 +63,22 @@ app.get('/api/health', (req, res) => {
 app.post('/api/auth/register', (req, res) => {
   const { username, email, password, avatar } = req.body;
   const cleanUsername = sanitizeString(username, 30);
-  const cleanEmail = email ? sanitizeString(email, 80).toLowerCase() : undefined;
+  const cleanEmail = email && typeof email === 'string' && email.trim() ? sanitizeString(email, 80).toLowerCase() : undefined;
 
-  if (!cleanUsername || cleanUsername.length < 3) {
-    return res.status(400).json({ error: 'اسم المستخدم يجب أن يتكون من 3 أحرف على الأقل / Username must be at least 3 chars' });
+  if (!cleanUsername || cleanUsername.length < 2) {
+    return res.status(400).json({ error: 'اسم المستخدم يجب أن يتكون من حرفين على الأقل' });
   }
 
-  if (!password || typeof password !== 'string' || password.length < 6) {
-    return res.status(400).json({ error: 'كلمة المرور يجب أن تتكون من 6 أحرف أو أرقام على الأقل / Password must be at least 6 characters' });
+  if (!password || typeof password !== 'string' || password.length < 4) {
+    return res.status(400).json({ error: 'كلمة المرور يجب أن تتكون من 4 أحرف أو أرقام على الأقل' });
   }
 
   if (cleanEmail && db.getUserByEmail(cleanEmail)) {
-    return res.status(400).json({ error: 'البريد الإلكتروني مسجل بالفعل / Email already registered' });
+    return res.status(400).json({ error: 'البريد الإلكتروني مسجل بالفعل، يمكنك تسجيل الدخول به' });
   }
 
   if (db.getUserByUsername(cleanUsername)) {
-    return res.status(400).json({ error: 'اسم المستخدم مأخوذ بالفعل، يرجى اختيار اسم آخر / Username already taken' });
+    return res.status(400).json({ error: 'اسم المستخدم مأخوذ بالفعل، يرجى اختيار اسم آخر' });
   }
 
   // Cryptographic Salted Hashing
@@ -97,55 +97,45 @@ app.post('/api/auth/register', (req, res) => {
   });
 
   const profile = db.getProfile(userId);
-  res.json({ user: { id: user.id, username: user.username, email: user.email, avatar: user.avatar, createdAt: user.createdAt, isGuest: false }, profile });
+  res.json({
+    user: { id: user.id, username: user.username, email: user.email, avatar: user.avatar, createdAt: user.createdAt, isGuest: false },
+    profile,
+  });
 });
 
-// Login with Brute-Force Lockout Defense
+// Login endpoint (handles email OR username seamlessly)
 app.post('/api/auth/login', (req, res) => {
-  const ip = getClientIp(req);
-  const now = Date.now();
-  const attempt = loginAttempts.get(ip) || { count: 0, lockedUntil: 0 };
+  const { email, password, username, emailOrUser } = req.body;
+  const rawId = (emailOrUser || username || email || '').toString().trim();
+  const cleanId = sanitizeString(rawId, 80);
+  const cleanPass = (password || '').toString();
 
-  // Check if IP is currently locked
-  if (attempt.lockedUntil > now) {
-    const secondsRemaining = Math.ceil((attempt.lockedUntil - now) / 1000);
-    return res.status(429).json({
-      error: `تم قفل محاولات تسجيل الدخول مؤقتاً لأسباب أمنية. يرجى الانتظار ${secondsRemaining} ثانية / Too many attempts. Try again in ${secondsRemaining}s`,
-    });
+  if (!cleanId || !cleanPass) {
+    return res.status(400).json({ error: 'يرجى إدخال اسم المستخدم وكلمة المرور' });
   }
 
-  const { email, password, username } = req.body;
-  const cleanEmail = email ? sanitizeString(email, 80).toLowerCase() : undefined;
-  const cleanUsername = username ? sanitizeString(username, 30) : undefined;
+  // Find user by email OR username (case-insensitive)
+  let user = db.getUserByEmail(cleanId) || db.getUserByUsername(cleanId);
+  if (!user) {
+    user = Object.values((db as any).data.users as Record<string, any>).find(
+      (u) =>
+        u.username.toLowerCase() === cleanId.toLowerCase() ||
+        (u.email && u.email.toLowerCase() === cleanId.toLowerCase())
+    );
+  }
 
-  let user = null;
-  if (cleanEmail) {
-    user = db.getUserByEmail(cleanEmail);
-  } else if (cleanUsername) {
-    user = db.getUserByUsername(cleanUsername);
+  if (!user) {
+    return res.status(401).json({ error: 'الحساب غير موجود، يرجى التأكد من البيانات أو إنشاء حساب جديد' });
   }
 
   const isValidPass =
-    user && user.passwordHash && user.salt && typeof password === 'string'
-      ? verifyPassword(password, user.salt, user.passwordHash)
-      : user && user.passwordHash === `hashed_${password}`; // legacy fallback
+    user.passwordHash && user.salt
+      ? verifyPassword(cleanPass, user.salt, user.passwordHash)
+      : user.passwordHash === `hashed_${cleanPass}` || user.passwordHash === cleanPass;
 
-  if (!user || !isValidPass) {
-    // Record failed attempt
-    attempt.count++;
-    if (attempt.count >= 6) {
-      attempt.lockedUntil = now + 3 * 60 * 1000; // Lock for 3 minutes
-      loginAttempts.set(ip, attempt);
-      return res.status(429).json({
-        error: 'تم تجاوز الحد الأقصى للمحاولات الخاطئة. تم قفل المحاولات لمدة 3 دقائق لحماية الحساب / Account attempts temporarily locked for 3 minutes',
-      });
-    }
-    loginAttempts.set(ip, attempt);
-    return res.status(401).json({ error: 'بيانات الدخول غير صحيحة، يرجى التأكد من البريد أو اسم المستخدم وكلمة المرور / Invalid credentials' });
+  if (!isValidPass) {
+    return res.status(401).json({ error: 'كلمة المرور غير صحيحة، يرجى المحاولة مجدداً' });
   }
-
-  // Reset failed attempts on success
-  loginAttempts.delete(ip);
 
   const profile = db.getProfile(user.id);
   res.json({
@@ -154,30 +144,39 @@ app.post('/api/auth/login', (req, res) => {
   });
 });
 
-// Google Authentication sync or verification endpoint
+// Google Authentication endpoint
 app.post('/api/auth/google', (req, res) => {
-  const { googleUid, email, displayName, photoUrl } = req.body;
-  if (!googleUid || !email) {
-    return res.status(400).json({ error: 'Google authentication payload missing' });
+  const { googleUid, email, displayName, avatar } = req.body;
+  const cleanEmail = (email || '').toString().trim().toLowerCase();
+
+  if (!cleanEmail) {
+    return res.status(400).json({ error: 'يرجى تحديد البريد الإلكتروني لحساب Google' });
   }
 
-  const cleanEmail = sanitizeString(email, 80).toLowerCase();
   let user = db.getUserByEmail(cleanEmail);
 
   if (!user) {
-    const userId = `g_${sanitizeString(googleUid, 32)}`;
+    const rawName = displayName || cleanEmail.split('@')[0];
+    let uniqueUsername = sanitizeString(rawName, 25);
+    if (!uniqueUsername || db.getUserByUsername(uniqueUsername)) {
+      uniqueUsername = `${uniqueUsername || 'GooglePlayer'}_${Math.floor(100 + Math.random() * 900)}`;
+    }
+    const userId = `g_${googleUid ? sanitizeString(googleUid, 32) : Date.now()}`;
     user = db.createUser({
       id: userId,
-      username: displayName ? sanitizeString(displayName, 25) : cleanEmail.split('@')[0],
+      username: uniqueUsername,
       email: cleanEmail,
-      avatar: 'user_1',
+      avatar: avatar || 'user_1',
       createdAt: new Date().toISOString(),
       isGuest: false,
     });
   }
 
   const profile = db.getProfile(user.id);
-  res.json({ user: { id: user.id, username: user.username, email: user.email, avatar: user.avatar, createdAt: user.createdAt, isGuest: false }, profile });
+  res.json({
+    user: { id: user.id, username: user.username, email: user.email, avatar: user.avatar, createdAt: user.createdAt, isGuest: false },
+    profile,
+  });
 });
 
 // Profile update

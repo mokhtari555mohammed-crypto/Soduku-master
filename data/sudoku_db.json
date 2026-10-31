@@ -58,6 +58,32 @@
       "avatar": "user_2",
       "createdAt": "2026-10-31T12:31:56.562Z",
       "isGuest": false
+    },
+    "g_goog_123456": {
+      "id": "g_goog_123456",
+      "username": "GooglePlayer",
+      "email": "test@gmail.com",
+      "avatar": "user_1",
+      "createdAt": "2026-10-31T12:40:18.649Z",
+      "isGuest": false
+    },
+    "user_1793450633065_ix3rt": {
+      "id": "user_1793450633065_ix3rt",
+      "username": "سودوكو_البرنس",
+      "email": "prince@sudoku.com",
+      "salt": "df576a9c0c67771cbb8512b7f51c9459",
+      "passwordHash": "aff7ec765b2a7525a502f333232b77c7949578e79c2138c467e09bbe13428b6da5de2d1028c5eced2152335ac52d4ebdf4741c0498de231c0d3d979c0ecb9ef6",
+      "avatar": "user_1",
+      "createdAt": "2026-10-31T12:43:53.065Z",
+      "isGuest": false
+    },
+    "g_1793450650252": {
+      "id": "g_1793450650252",
+      "username": "Mohamed",
+      "email": "dmohamede555@gmail.com",
+      "avatar": "user_1",
+      "createdAt": "2026-10-31T12:44:10.252Z",
+      "isGuest": false
     }
   },
   "profiles": {
@@ -188,6 +214,54 @@
       "currentStreak": 0,
       "rating": 1000,
       "rankTitle": "Novice"
+    },
+    "g_goog_123456": {
+      "userId": "g_goog_123456",
+      "username": "GooglePlayer",
+      "avatar": "user_1",
+      "createdAt": "2026-10-31T12:40:18.649Z",
+      "matches": 0,
+      "wins": 0,
+      "losses": 0,
+      "draws": 0,
+      "winRate": 0,
+      "correctMoves": 0,
+      "bestStreak": 0,
+      "currentStreak": 0,
+      "rating": 1000,
+      "rankTitle": "Novice"
+    },
+    "user_1793450633065_ix3rt": {
+      "userId": "user_1793450633065_ix3rt",
+      "username": "سودوكو_البرنس",
+      "avatar": "user_1",
+      "createdAt": "2026-10-31T12:43:53.065Z",
+      "matches": 0,
+      "wins": 0,
+      "losses": 0,
+      "draws": 0,
+      "winRate": 0,
+      "correctMoves": 0,
+      "bestStreak": 0,
+      "currentStreak": 0,
+      "rating": 1000,
+      "rankTitle": "Novice"
+    },
+    "g_1793450650252": {
+      "userId": "g_1793450650252",
+      "username": "Mohamed",
+      "avatar": "user_1",
+      "createdAt": "2026-10-31T12:44:10.252Z",
+      "matches": 0,
+      "wins": 0,
+      "losses": 0,
+      "draws": 0,
+      "winRate": 0,
+      "correctMoves": 0,
+      "bestStreak": 0,
+      "currentStreak": 0,
+      "rating": 1000,
+      "rankTitle": "Novice"
     }
   },
   "offlineProgress": {
@@ -203,6 +277,21 @@
     },
     "user_1793449916562_janrz": {
       "userId": "user_1793449916562_janrz",
+      "unlockedLevel": 1,
+      "levels": {}
+    },
+    "g_goog_123456": {
+      "userId": "g_goog_123456",
+      "unlockedLevel": 1,
+      "levels": {}
+    },
+    "user_1793450633065_ix3rt": {
+      "userId": "user_1793450633065_ix3rt",
+      "unlockedLevel": 1,
+      "levels": {}
+    },
+    "g_1793450650252": {
+      "userId": "g_1793450650252",
       "unlockedLevel": 1,
       "levels": {}
     }

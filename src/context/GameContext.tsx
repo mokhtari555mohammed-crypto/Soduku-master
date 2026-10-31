@@ -48,6 +48,7 @@ interface GameContextType {
   updateProfileData: (username: string, avatar: string) => Promise<boolean>;
   loginUser: (emailOrUser: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   registerUser: (username: string, email?: string, pass?: string, avatar?: string) => Promise<{ success: boolean; error?: string }>;
+  loginWithGoogle: (email: string, displayName?: string, avatar?: string) => Promise<{ success: boolean; error?: string }>;
   logoutUser: () => void;
 
   // Offline Mode
@@ -427,6 +428,38 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const loginWithGoogle = async (email: string, displayName?: string, avatar?: string) => {
+    try {
+      const res = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          googleUid: `goog_${Date.now()}`,
+          email,
+          displayName,
+          avatar: avatar || 'user_1',
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) return { success: false, error: data.error };
+
+      setUser(data.user);
+      setProfile(data.profile);
+      localStorage.setItem('sudoku_user_id', data.user.id);
+
+      const progRes = await fetch(`/api/offline/progress/${data.user.id}`);
+      const progData = await progRes.json();
+      if (progData.progress) {
+        setOfflineProgress(progData.progress);
+        setCurrentOfflineLevel(progData.progress.unlockedLevel || 1);
+      }
+
+      return { success: true };
+    } catch {
+      return { success: false, error: 'Google login failed' };
+    }
+  };
+
   const logoutUser = () => {
     localStorage.removeItem('sudoku_user_id');
     setUser(null);
@@ -554,6 +587,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateProfileData,
         loginUser,
         registerUser,
+        loginWithGoogle,
         logoutUser,
         offlineProgress,
         currentOfflineLevel,
