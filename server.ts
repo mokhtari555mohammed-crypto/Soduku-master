@@ -83,7 +83,10 @@ app.post('/api/auth/register', (req, res) => {
 
   // Cryptographic Salted Hashing
   const { salt, hash } = hashPassword(password);
-  const userId = `user_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const userId =
+    req.body.userId && typeof req.body.userId === 'string' && req.body.userId.trim()
+      ? sanitizeString(req.body.userId.trim(), 64)
+      : `user_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
   const user = db.createUser({
     id: userId,

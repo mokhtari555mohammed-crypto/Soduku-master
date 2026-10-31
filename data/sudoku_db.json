@@ -84,6 +84,16 @@
       "avatar": "user_1",
       "createdAt": "2026-10-31T12:44:10.252Z",
       "isGuest": false
+    },
+    "user_1793453961716_4hr22": {
+      "id": "user_1793453961716_4hr22",
+      "username": "TestPlayer123",
+      "email": "test123@example.com",
+      "salt": "e2733310bd9409a5fb1695c21d5a4de3",
+      "passwordHash": "e959b272ceb24cc07159bc0741863ac9b7b679dfafa2542d52a75924556ce1dd382b6fec6de312ef4cb68c4685f6d25d3e4c9f0ca663cb806530894c84174fa8",
+      "avatar": "user_2",
+      "createdAt": "2026-10-31T13:39:21.716Z",
+      "isGuest": false
     }
   },
   "profiles": {
@@ -262,6 +272,22 @@
       "currentStreak": 0,
       "rating": 1000,
       "rankTitle": "Novice"
+    },
+    "user_1793453961716_4hr22": {
+      "userId": "user_1793453961716_4hr22",
+      "username": "TestPlayer123",
+      "avatar": "user_2",
+      "createdAt": "2026-10-31T13:39:21.716Z",
+      "matches": 0,
+      "wins": 0,
+      "losses": 0,
+      "draws": 0,
+      "winRate": 0,
+      "correctMoves": 0,
+      "bestStreak": 0,
+      "currentStreak": 0,
+      "rating": 1000,
+      "rankTitle": "Novice"
     }
   },
   "offlineProgress": {
@@ -292,6 +318,11 @@
     },
     "g_1793450650252": {
       "userId": "g_1793450650252",
+      "unlockedLevel": 1,
+      "levels": {}
+    },
+    "user_1793453961716_4hr22": {
+      "userId": "user_1793453961716_4hr22",
       "unlockedLevel": 1,
       "levels": {}
     }

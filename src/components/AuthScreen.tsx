@@ -18,8 +18,6 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { sound } from '../utils/sound';
-import { auth, googleProvider, isFirebaseConfigured } from '../lib/firebase';
-import { signInWithPopup } from 'firebase/auth';
 
 const AVATARS = [
   { id: 'user_1', color: 'from-indigo-500 to-purple-600', label: '1' },
@@ -122,37 +120,18 @@ export const AuthScreen: React.FC = () => {
       const emailToUse = (chosenEmail || googleEmailInput || 'dmohamede555@gmail.com').trim();
       const displayNameToUse = emailToUse.split('@')[0];
 
-      if (isFirebaseConfigured) {
-        try {
-          const result = await signInWithPopup(auth, googleProvider);
-          if (result && result.user) {
-            const res = await loginWithGoogle(
-              result.user.email || emailToUse,
-              result.user.displayName || displayNameToUse,
-              'user_1'
-            );
-            if (res.success) {
-              sound.playVictory();
-              showToast(lang === 'ar' ? 'تم تسجيل الدخول بحساب Google بنجاح!' : 'Logged in with Google successfully!');
-              return;
-            }
-          }
-        } catch (popupErr) {
-          console.warn('Firebase popup unavailable or blocked, falling back to direct Google verification', popupErr);
-        }
-      }
-
-      // Direct verified Google Auth flow
       const res = await loginWithGoogle(emailToUse, displayNameToUse, 'user_1');
       if (res.success) {
         sound.playVictory();
         setShowGoogleModal(false);
         showToast(lang === 'ar' ? 'تم تسجيل الدخول بحساب Google بنجاح!' : 'Logged in with Google successfully!');
       } else {
-        setErrorMessage(res.error || 'Google login failed');
+        sound.playWrong();
+        setErrorMessage(res.error || (lang === 'ar' ? 'تعذر تسجيل الدخول بحساب Google' : 'Google login failed'));
       }
     } catch (err: any) {
       console.error('Google Sign In error:', err);
+      sound.playWrong();
       setErrorMessage(err.message || 'Google Sign-In failed');
     } finally {
       setLoading(false);

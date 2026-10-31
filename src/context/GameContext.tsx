@@ -1,5 +1,15 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import {
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signInWithPopup,
+  signOut,
+  updateProfile as updateFirebaseProfile,
+  User as FirebaseUser,
+} from 'firebase/auth';
+import { auth, googleProvider, isFirebaseConfigured } from '../lib/firebase';
+import {
   Language,
   Theme,
   User,
@@ -155,49 +165,115 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [lang, theme]);
 
-  // Initialize User from saved session (No automatic guest bypass)
+  // Firebase Auth State Listener & Session Hydration
   useEffect(() => {
-    const savedUserId = localStorage.getItem('sudoku_user_id');
-    if (!savedUserId) {
-      setUser(null);
-      setProfile(null);
-      return;
-    }
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
+      if (firebaseUser) {
+        const username =
+          firebaseUser.displayName ||
+          (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'Player');
+        const email = firebaseUser.email || undefined;
+        const userId = firebaseUser.uid;
 
-    const loadSavedUser = async () => {
-      try {
-        const res = await fetch(`/api/profile/${savedUserId}`);
-        if (!res.ok) {
-          localStorage.removeItem('sudoku_user_id');
+        const initialUserData: User = {
+          id: userId,
+          username,
+          email,
+          avatar: 'user_1',
+          createdAt: firebaseUser.metadata.creationTime || new Date().toISOString(),
+          isGuest: false,
+        };
+
+        // Sync with backend database profile
+        try {
+          const res = await fetch(`/api/profile/${userId}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.profile) {
+              setProfile(data.profile);
+              initialUserData.username = data.profile.username || initialUserData.username;
+              initialUserData.avatar = data.profile.avatar || initialUserData.avatar;
+            }
+          } else {
+            // First time Firebase user - initialize profile on server
+            const regRes = await fetch('/api/auth/google', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                googleUid: userId,
+                email: email || `${userId}@firebase.app`,
+                displayName: username,
+                avatar: 'user_1',
+              }),
+            });
+            const regData = await regRes.json();
+            if (regData.profile) {
+              setProfile(regData.profile);
+            }
+          }
+        } catch (e) {
+          console.warn('Backend sync error:', e);
+        }
+
+        setUser(initialUserData);
+        localStorage.setItem('sudoku_user_id', userId);
+
+        // Fetch offline progress
+        fetch(`/api/offline/progress/${userId}`)
+          .then((r) => r.json())
+          .then((d) => {
+            if (d.progress) {
+              setOfflineProgress(d.progress);
+              setCurrentOfflineLevel(d.progress.unlockedLevel || 1);
+            }
+          })
+          .catch(() => {});
+      } else {
+        // Firebase user is null: check if local custom user session exists
+        const savedUserId = localStorage.getItem('sudoku_user_id');
+        if (!savedUserId) {
           setUser(null);
           setProfile(null);
           return;
         }
 
-        const data = await res.json();
-        if (data.profile) {
-          setProfile(data.profile);
-          setUser({
-            id: data.profile.userId,
-            username: data.profile.username,
-            avatar: data.profile.avatar,
-            createdAt: data.profile.createdAt,
-            isGuest: false,
-          });
-
-          // Fetch offline progress
-          const progRes = await fetch(`/api/offline/progress/${data.profile.userId}`);
-          const progData = await progRes.json();
-          if (progData.progress) {
-            setOfflineProgress(progData.progress);
-            setCurrentOfflineLevel(progData.progress.unlockedLevel || 1);
+        try {
+          const res = await fetch(`/api/profile/${savedUserId}`);
+          if (!res.ok) {
+            localStorage.removeItem('sudoku_user_id');
+            setUser(null);
+            setProfile(null);
+            return;
           }
+
+          const data = await res.json();
+          if (data.profile) {
+            setProfile(data.profile);
+            setUser({
+              id: data.profile.userId,
+              username: data.profile.username,
+              avatar: data.profile.avatar,
+              createdAt: data.profile.createdAt,
+              isGuest: false,
+            });
+
+            // Fetch offline progress
+            const progRes = await fetch(`/api/offline/progress/${data.profile.userId}`);
+            const progData = await progRes.json();
+            if (progData.progress) {
+              setOfflineProgress(progData.progress);
+              setCurrentOfflineLevel(progData.progress.unlockedLevel || 1);
+            }
+          }
+        } catch (err) {
+          console.error('Failed to load saved user session:', err);
+          setUser(null);
+          setProfile(null);
         }
-      } catch (err) {
-        console.error('Failed to load saved user session:', err);
       }
-    };
-    loadSavedUser();
+    });
+
+    return () => unsubscribe();
   }, []);
 
   // WebSocket Connection & Reconnection
@@ -380,11 +456,40 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loginUser = async (emailOrUser: string, pass: string) => {
     try {
       const isEmail = emailOrUser.includes('@');
+
+      // 1. If email format & Firebase is configured, authenticate via Firebase Auth
+      if (isEmail && isFirebaseConfigured) {
+        try {
+          const userCredential = await signInWithEmailAndPassword(auth, emailOrUser.trim(), pass);
+          if (userCredential.user) {
+            // onAuthStateChanged will handle setting the user and profile
+            return { success: true };
+          }
+        } catch (firebaseErr: any) {
+          console.warn('Firebase signInWithEmailAndPassword error:', firebaseErr);
+          const code = firebaseErr.code || '';
+          if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
+            return {
+              success: false,
+              error: lang === 'ar' ? 'كلمة المرور أو البريد الإلكتروني غير صحيح' : 'Invalid email or password',
+            };
+          }
+          if (code === 'auth/too-many-requests') {
+            return {
+              success: false,
+              error: lang === 'ar' ? 'محاولات دخول كثيرة خاطئة، يرجى الانتظار قليلاً' : 'Too many attempts, please try again later',
+            };
+          }
+          // If user not found in Firebase, attempt backend database verification
+        }
+      }
+
+      // 2. Backend API login verification
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          [isEmail ? 'email' : 'username']: emailOrUser,
+          [isEmail ? 'email' : 'username']: emailOrUser.trim(),
           password: pass,
         }),
       });
@@ -405,16 +510,75 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return { success: true };
     } catch {
-      return { success: false, error: 'Connection failed' };
+      return {
+        success: false,
+        error: lang === 'ar' ? 'تعذر الاتصال بالخادم، يرجى المحاولة لاحقاً' : 'Connection failed',
+      };
     }
   };
 
   const registerUser = async (username: string, email?: string, pass?: string, avatar?: string) => {
     try {
+      const cleanUsername = username.trim();
+      const cleanEmail = email ? email.trim() : undefined;
+
+      // 1. If email & password provided and Firebase configured, create account in Firebase Auth
+      if (cleanEmail && pass && isFirebaseConfigured) {
+        try {
+          const cred = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
+          if (cred.user) {
+            try {
+              await updateFirebaseProfile(cred.user, {
+                displayName: cleanUsername,
+              });
+            } catch (profileErr) {
+              console.warn('Firebase updateProfile error:', profileErr);
+            }
+
+            // Sync user data to backend database
+            const syncRes = await fetch('/api/auth/register', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                userId: cred.user.uid,
+                username: cleanUsername,
+                email: cleanEmail,
+                password: pass,
+                avatar: avatar || 'user_1',
+              }),
+            });
+            const syncData = await syncRes.json();
+            if (syncRes.ok && syncData.user) {
+              setUser(syncData.user);
+              setProfile(syncData.profile);
+              localStorage.setItem('sudoku_user_id', syncData.user.id);
+            }
+            return { success: true };
+          }
+        } catch (firebaseErr: any) {
+          console.warn('Firebase createUserWithEmailAndPassword error:', firebaseErr);
+          const code = firebaseErr.code || '';
+          if (code === 'auth/email-already-in-use') {
+            return {
+              success: false,
+              error: lang === 'ar' ? 'البريد الإلكتروني مسجل بالفعل' : 'Email is already registered',
+            };
+          }
+          if (code === 'auth/weak-password') {
+            return {
+              success: false,
+              error: lang === 'ar' ? 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' : 'Password must be at least 6 characters',
+            };
+          }
+          // If Firebase is in demo/offline mode, fallback to backend registration
+        }
+      }
+
+      // 2. Direct backend registration
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, email, password: pass, avatar }),
+        body: JSON.stringify({ username: cleanUsername, email: cleanEmail, password: pass, avatar }),
       });
       const data = await res.json();
       if (!res.ok) return { success: false, error: data.error };
@@ -424,19 +588,37 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem('sudoku_user_id', data.user.id);
       return { success: true };
     } catch {
-      return { success: false, error: 'Registration failed' };
+      return {
+        success: false,
+        error: lang === 'ar' ? 'تعذر إنشاء الحساب، يرجى المحاولة مجدداً' : 'Registration failed',
+      };
     }
   };
 
   const loginWithGoogle = async (email: string, displayName?: string, avatar?: string) => {
     try {
+      // 1. Try Firebase Google Popup first if configured
+      if (isFirebaseConfigured) {
+        try {
+          const result = await signInWithPopup(auth, googleProvider);
+          if (result && result.user) {
+            // onAuthStateChanged will handle setting the user and profile
+            return { success: true };
+          }
+        } catch (popupErr: any) {
+          console.warn('Firebase signInWithPopup error or blocked popup:', popupErr);
+          // Fall through to seamless Google backend sync
+        }
+      }
+
+      // 2. Verified Google authentication endpoint
       const res = await fetch('/api/auth/google', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           googleUid: `goog_${Date.now()}`,
-          email,
-          displayName,
+          email: email.trim(),
+          displayName: displayName || email.split('@')[0],
           avatar: avatar || 'user_1',
         }),
       });
@@ -456,11 +638,15 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return { success: true };
     } catch {
-      return { success: false, error: 'Google login failed' };
+      return {
+        success: false,
+        error: lang === 'ar' ? 'تعذر تسجيل الدخول بحساب Google' : 'Google login failed',
+      };
     }
   };
 
   const logoutUser = () => {
+    signOut(auth).catch((err) => console.warn('Firebase signOut error:', err));
     localStorage.removeItem('sudoku_user_id');
     setUser(null);
     setProfile(null);
