@@ -112,3 +112,11 @@ export interface LeaderboardEntry {
   rating: number;
   rankTitle: string;
 }
+
+export interface AuthResponse {
+  success: boolean;
+  error?: string;
+  code?: string;
+  suggestion?: string;
+  field?: string;
+}

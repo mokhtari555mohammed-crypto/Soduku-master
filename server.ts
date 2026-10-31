@@ -62,31 +62,88 @@ app.get('/api/health', (req, res) => {
 // Authentication / User registration
 app.post('/api/auth/register', (req, res) => {
   const { username, email, password, avatar } = req.body;
+  const customUserId = req.body.userId && typeof req.body.userId === 'string' && req.body.userId.trim()
+    ? sanitizeString(req.body.userId.trim(), 64)
+    : undefined;
+
+  // 1. If customUserId is already registered (e.g. Firebase Auth sync or reconnect), return existing user
+  if (customUserId) {
+    const existingById = db.getUserById(customUserId);
+    if (existingById) {
+      const profile = db.getProfile(existingById.id);
+      return res.json({
+        user: { id: existingById.id, username: existingById.username, email: existingById.email, avatar: existingById.avatar, createdAt: existingById.createdAt, isGuest: false },
+        profile,
+      });
+    }
+  }
+
   const cleanUsername = sanitizeString(username, 30);
   const cleanEmail = email && typeof email === 'string' && email.trim() ? sanitizeString(email, 80).toLowerCase() : undefined;
 
+  // 2. Validate cleanUsername
   if (!cleanUsername || cleanUsername.length < 2) {
-    return res.status(400).json({ error: 'اسم المستخدم يجب أن يتكون من حرفين على الأقل' });
+    return res.status(400).json({
+      error: 'اسم المستخدم قصير جداً؛ يجب أن يتكون من حرفين على الأقل',
+      errorEn: 'Username is too short; it must be at least 2 characters',
+      code: 'USERNAME_TOO_SHORT',
+      field: 'username',
+      suggestion: 'يرجى كتابة اسم مكون من حرفين أو أكثر (مثال: بطل_السودوكو)',
+    });
   }
 
-  if (!password || typeof password !== 'string' || password.length < 4) {
-    return res.status(400).json({ error: 'كلمة المرور يجب أن تتكون من 4 أحرف أو أرقام على الأقل' });
+  // 3. Validate password
+  if (!password || typeof password !== 'string' || password.length < 6) {
+    return res.status(400).json({
+      error: `كلمة المرور يجب أن تتكون من 6 خانات على الأقل (أدخلت ${password ? String(password).length : 0} خانات)`,
+      errorEn: `Password must be at least 6 characters (you entered ${password ? String(password).length : 0})`,
+      code: 'PASSWORD_TOO_SHORT',
+      field: 'password',
+      suggestion: 'اختر كلمة مرور مكونة من 6 خانات أو أكثر لتأمين حسابك',
+    });
   }
 
-  if (cleanEmail && db.getUserByEmail(cleanEmail)) {
-    return res.status(400).json({ error: 'البريد الإلكتروني مسجل بالفعل، يمكنك تسجيل الدخول به' });
+  // 4. Validate email format if provided
+  if (cleanEmail) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      return res.status(400).json({
+        error: `صيغة البريد الإلكتروني "${cleanEmail}" غير صحيحة`,
+        errorEn: `Invalid email address format: "${cleanEmail}"`,
+        code: 'INVALID_EMAIL_FORMAT',
+        field: 'email',
+        suggestion: 'تأكد من كتابة البريد مثل name@example.com أو اتركه فارغاً (اختياري)',
+      });
+    }
+
+    const existingEmailUser = db.getUserByEmail(cleanEmail);
+    if (existingEmailUser && (!customUserId || existingEmailUser.id !== customUserId)) {
+      return res.status(400).json({
+        error: `البريد الإلكتروني "${cleanEmail}" مسجل بالفعل لحساب آخر`,
+        errorEn: `Email "${cleanEmail}" is already registered to another account`,
+        code: 'EMAIL_ALREADY_EXISTS',
+        field: 'email',
+        suggestion: 'يمكنك الانتقال لتبويب "تسجيل الدخول" بالبريد نفسه، أو كتابة بريد آخر',
+      });
+    }
   }
 
-  if (db.getUserByUsername(cleanUsername)) {
-    return res.status(400).json({ error: 'اسم المستخدم مأخوذ بالفعل، يرجى اختيار اسم آخر' });
+  // 5. Check username uniqueness
+  const existingUsernameUser = db.getUserByUsername(cleanUsername);
+  if (existingUsernameUser && (!customUserId || existingUsernameUser.id !== customUserId)) {
+    const suggestedSuffix = Math.floor(10 + Math.random() * 90);
+    return res.status(400).json({
+      error: `اسم المستخدم "${cleanUsername}" مسجل ومأخوذ بالفعل من قِبل لاعب آخر`,
+      errorEn: `Username "${cleanUsername}" is already taken by another player`,
+      code: 'USERNAME_ALREADY_EXISTS',
+      field: 'username',
+      suggestion: `جرب اسماً مميزاً مثل "${cleanUsername}_${suggestedSuffix}" أو "${cleanUsername}2026"`,
+    });
   }
 
   // Cryptographic Salted Hashing
   const { salt, hash } = hashPassword(password);
-  const userId =
-    req.body.userId && typeof req.body.userId === 'string' && req.body.userId.trim()
-      ? sanitizeString(req.body.userId.trim(), 64)
-      : `user_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const userId = customUserId || `user_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
   const user = db.createUser({
     id: userId,
@@ -113,8 +170,24 @@ app.post('/api/auth/login', (req, res) => {
   const cleanId = sanitizeString(rawId, 80);
   const cleanPass = (password || '').toString();
 
-  if (!cleanId || !cleanPass) {
-    return res.status(400).json({ error: 'يرجى إدخال اسم المستخدم وكلمة المرور' });
+  if (!cleanId) {
+    return res.status(400).json({
+      error: 'يرجى إدخال اسم المستخدم أو البريد الإلكتروني',
+      errorEn: 'Please enter your username or email',
+      code: 'MISSING_IDENTIFIER',
+      field: 'identifier',
+      suggestion: 'أدخل اسم المستخدم الذي أنشأت به حسابك أو بريدك الإلكتروني',
+    });
+  }
+
+  if (!cleanPass) {
+    return res.status(400).json({
+      error: 'يرجى إدخال كلمة المرور الخاصة بحسابك',
+      errorEn: 'Please enter your password',
+      code: 'MISSING_PASSWORD',
+      field: 'password',
+      suggestion: 'أدخل كلمة المرور التي اخترتها عند التسجيل',
+    });
   }
 
   // Find user by email OR username (case-insensitive)
@@ -122,13 +195,19 @@ app.post('/api/auth/login', (req, res) => {
   if (!user) {
     user = Object.values((db as any).data.users as Record<string, any>).find(
       (u) =>
-        u.username.toLowerCase() === cleanId.toLowerCase() ||
+        (u.username && u.username.toLowerCase() === cleanId.toLowerCase()) ||
         (u.email && u.email.toLowerCase() === cleanId.toLowerCase())
     );
   }
 
   if (!user) {
-    return res.status(401).json({ error: 'الحساب غير موجود، يرجى التأكد من البيانات أو إنشاء حساب جديد' });
+    return res.status(401).json({
+      error: `لم يتم العثور على أي حساب مسجل باسم أو بريد "${cleanId}"`,
+      errorEn: `No registered account found for "${cleanId}"`,
+      code: 'USER_NOT_FOUND',
+      field: 'identifier',
+      suggestion: 'تأكد من كتابة الاسم أو البريد بشكل صحيح، أو اضغط على "إنشاء حساب" للتسجيل كلاعب جديد',
+    });
   }
 
   const isValidPass =
@@ -137,7 +216,13 @@ app.post('/api/auth/login', (req, res) => {
       : user.passwordHash === `hashed_${cleanPass}` || user.passwordHash === cleanPass;
 
   if (!isValidPass) {
-    return res.status(401).json({ error: 'كلمة المرور غير صحيحة، يرجى المحاولة مجدداً' });
+    return res.status(401).json({
+      error: 'كلمة المرور غير صحيحة، يرجى التأكد وإعادة المحاولة',
+      errorEn: 'Incorrect password, please check and try again',
+      code: 'WRONG_PASSWORD',
+      field: 'password',
+      suggestion: 'تأكد من حالة الأحرف (كبيرة/صغيرة) ومن صحة لوحة المفاتيح',
+    });
   }
 
   const profile = db.getProfile(user.id);

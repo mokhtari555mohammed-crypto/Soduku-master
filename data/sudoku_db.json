@@ -94,6 +94,15 @@
       "avatar": "user_2",
       "createdAt": "2026-10-31T13:39:21.716Z",
       "isGuest": false
+    },
+    "user_1793454996359_egb1z": {
+      "id": "user_1793454996359_egb1z",
+      "username": "FriendPlayer1",
+      "salt": "817cb7f7adcb36e332c1a5fa8d6a2cac",
+      "passwordHash": "722528435ba7cbbb3095f2904a39c165baf641e8641b6b831e3c7f681477f801890498446708079d20d0efa4e9c9a34071eb24f996069ef29a068630b115c395",
+      "avatar": "user_3",
+      "createdAt": "2026-10-31T13:56:36.359Z",
+      "isGuest": false
     }
   },
   "profiles": {
@@ -288,6 +297,22 @@
       "currentStreak": 0,
       "rating": 1000,
       "rankTitle": "Novice"
+    },
+    "user_1793454996359_egb1z": {
+      "userId": "user_1793454996359_egb1z",
+      "username": "FriendPlayer1",
+      "avatar": "user_3",
+      "createdAt": "2026-10-31T13:56:36.359Z",
+      "matches": 0,
+      "wins": 0,
+      "losses": 0,
+      "draws": 0,
+      "winRate": 0,
+      "correctMoves": 0,
+      "bestStreak": 0,
+      "currentStreak": 0,
+      "rating": 1000,
+      "rankTitle": "Novice"
     }
   },
   "offlineProgress": {
@@ -323,6 +348,11 @@
     },
     "user_1793453961716_4hr22": {
       "userId": "user_1793453961716_4hr22",
+      "unlockedLevel": 1,
+      "levels": {}
+    },
+    "user_1793454996359_egb1z": {
+      "userId": "user_1793454996359_egb1z",
       "unlockedLevel": 1,
       "levels": {}
     }

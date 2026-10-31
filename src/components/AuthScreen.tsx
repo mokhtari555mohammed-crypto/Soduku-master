@@ -16,6 +16,11 @@ import {
   VolumeX,
   AlertCircle,
   CheckCircle2,
+  HelpCircle,
+  Copy,
+  Check,
+  Info,
+  Wand2,
 } from 'lucide-react';
 import { sound } from '../utils/sound';
 
@@ -29,6 +34,13 @@ const AVATARS = [
   { id: 'user_7', color: 'from-lime-500 to-emerald-600', label: '7' },
   { id: 'user_8', color: 'from-sky-500 to-indigo-600', label: '8' },
 ];
+
+interface DiagnosticError {
+  message: string;
+  suggestion?: string;
+  code?: string;
+  field?: string;
+}
 
 export const AuthScreen: React.FC = () => {
   const {
@@ -53,59 +65,161 @@ export const AuthScreen: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState<string>('');
   const [selectedAvatar, setSelectedAvatar] = useState<string>('user_1');
   const [loading, setLoading] = useState<boolean>(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [diagnostic, setDiagnostic] = useState<DiagnosticError | null>(null);
+  const [copiedDiag, setCopiedDiag] = useState<boolean>(false);
   const [showGoogleModal, setShowGoogleModal] = useState<boolean>(false);
   const [googleEmailInput, setGoogleEmailInput] = useState<string>('dmohamede555@gmail.com');
 
+  // Switch tabs and reset errors
+  const handleTabSwitch = (newMode: 'login' | 'register') => {
+    sound.playClick();
+    setMode(newMode);
+    setDiagnostic(null);
+  };
+
+  // Copy error diagnosis to clipboard for friends or debugging
+  const handleCopyDiagnostics = async () => {
+    if (!diagnostic) return;
+    sound.playClick();
+    const reportText = `[Sudoku Master Auth Diagnostic Report]
+Operation: ${mode.toUpperCase()}
+Issue: ${diagnostic.message}
+Proposed Solution: ${diagnostic.suggestion || 'N/A'}
+Error Code: ${diagnostic.code || 'UNKNOWN'}
+Target Field: ${diagnostic.field || 'N/A'}
+User Input: ${mode === 'login' ? `Identifier: ${emailOrUser}` : `Username: ${username}, Email: ${email || 'none'}`}
+Language: ${lang}
+Timestamp: ${new Date().toISOString()}
+UserAgent: ${navigator.userAgent}`;
+
+    try {
+      await navigator.clipboard.writeText(reportText);
+      setCopiedDiag(true);
+      showToast(lang === 'ar' ? 'تم نسخ تقرير تشخيص الخطأ بنجاح!' : 'Diagnostic report copied!');
+      setTimeout(() => setCopiedDiag(false), 3000);
+    } catch {
+      showToast(lang === 'ar' ? 'تعذر النسخ تلقائياً' : 'Could not copy text');
+    }
+  };
+
+  // Generate suggested alternate username when taken
+  const applySuggestedUsername = () => {
+    sound.playClick();
+    const clean = username.trim() || 'Player';
+    const suggested = `${clean}_${Math.floor(10 + Math.random() * 90)}`;
+    setUsername(suggested);
+    setDiagnostic(null);
+    showToast(lang === 'ar' ? `تم اعتماد الاسم المقترح: ${suggested}` : `Applied suggested: ${suggested}`);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMessage(null);
+    setDiagnostic(null);
     sound.playClick();
 
     if (mode === 'login') {
-      if (!emailOrUser.trim() || !password) {
-        setErrorMessage(lang === 'ar' ? 'يرجى إدخال اسم المستخدم أو البريد وكلمة المرور' : 'Please enter your username/email and password');
+      const cleanId = emailOrUser.trim();
+      if (!cleanId) {
+        setDiagnostic({
+          message: lang === 'ar' ? 'يرجى إدخال اسم المستخدم أو البريد الإلكتروني' : 'Please enter your username or email',
+          suggestion: lang === 'ar' ? 'أدخل اسم الحساب أو البريد الذي قمت بالتسجيل به' : 'Enter your registered credentials',
+          field: 'identifier',
+          code: 'CLIENT_MISSING_ID',
+        });
         return;
       }
+      if (!password) {
+        setDiagnostic({
+          message: lang === 'ar' ? 'يرجى إدخال كلمة المرور' : 'Please enter your password',
+          suggestion: lang === 'ar' ? 'أدخل كلمة المرور الخاصة بحسابك للمتابعة' : 'Enter your account password',
+          field: 'password',
+          code: 'CLIENT_MISSING_PASS',
+        });
+        return;
+      }
+
       setLoading(true);
-      const res = await loginUser(emailOrUser.trim(), password);
+      const res = await loginUser(cleanId, password);
       setLoading(false);
+
       if (res.success) {
         sound.playVictory();
         showToast(lang === 'ar' ? 'تم تسجيل الدخول بنجاح! أهلاً بك' : 'Logged in successfully! Welcome');
       } else {
         sound.playWrong();
-        setErrorMessage(res.error || (lang === 'ar' ? 'فشل تسجيل الدخول، يرجى التأكد من البيانات' : 'Login failed, please check your credentials'));
+        setDiagnostic({
+          message: res.error || (lang === 'ar' ? 'فشل تسجيل الدخول، يرجى التأكد من البيانات' : 'Login failed, please check your credentials'),
+          suggestion: res.suggestion || (lang === 'ar' ? 'تأكد من صحة اسم المستخدم وكلمة المرور أو أنشئ حساباً جديداً' : 'Check username and password, or create a new account'),
+          code: res.code || 'LOGIN_ERROR',
+          field: res.field,
+        });
       }
     } else {
       // Registration checks
-      if (!username.trim() || username.trim().length < 2) {
-        setErrorMessage(lang === 'ar' ? 'اسم المستخدم يجب ألا يقل عن حرفين' : 'Username must be at least 2 characters');
+      const cleanUser = username.trim();
+      if (!cleanUser || cleanUser.length < 2) {
+        setDiagnostic({
+          message: lang === 'ar' ? 'اسم المستخدم قصير جداً؛ يجب أن يتكون من حرفين على الأقل' : 'Username must be at least 2 characters',
+          suggestion: lang === 'ar' ? 'اختر اسماً مميزاً يتكون من حرفين أو أكثر (مثال: بطل_السودوكو)' : 'Choose a username with at least 2 characters',
+          field: 'username',
+          code: 'CLIENT_SHORT_USER',
+        });
         return;
       }
-      if (password.length < 4) {
-        setErrorMessage(lang === 'ar' ? 'كلمة المرور يجب أن تتكون من 4 خانات على الأقل' : 'Password must be at least 4 characters');
+
+      if (password.length < 6) {
+        setDiagnostic({
+          message: lang === 'ar' ? `كلمة المرور يجب أن تتكون من 6 خانات على الأقل (أدخلت ${password.length} خانات فقط)` : `Password must be at least 6 characters (you entered ${password.length})`,
+          suggestion: lang === 'ar' ? 'اختر كلمة مرور مكونة من 6 أحرف أو أرقام على الأقل لتأمين حسابك' : 'Choose a password with 6 or more characters',
+          field: 'password',
+          code: 'CLIENT_SHORT_PASS',
+        });
         return;
       }
+
       if (password !== confirmPassword) {
-        setErrorMessage(t.passwordsDoNotMatch);
+        setDiagnostic({
+          message: t.passwordsDoNotMatch,
+          suggestion: lang === 'ar' ? 'تأكد من كتابة نفس كلمة المرور في خانة "تأكيد كلمة المرور"' : 'Make sure both password fields match exactly',
+          field: 'confirmPassword',
+          code: 'CLIENT_PASS_MISMATCH',
+        });
         return;
+      }
+
+      if (email.trim()) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email.trim())) {
+          setDiagnostic({
+            message: lang === 'ar' ? `صيغة البريد الإلكتروني "${email.trim()}" غير صحيحة` : `Invalid email address format: "${email.trim()}"`,
+            suggestion: lang === 'ar' ? 'تأكد من كتابة بريد صالح مثل name@example.com أو اترك الحقل فارغاً (اختياري)' : 'Enter a valid email or leave blank (optional)',
+            field: 'email',
+            code: 'CLIENT_INVALID_EMAIL',
+          });
+          return;
+        }
       }
 
       setLoading(true);
       const res = await registerUser(
-        username.trim(),
+        cleanUser,
         email.trim() || undefined,
         password,
         selectedAvatar
       );
       setLoading(false);
+
       if (res.success) {
         sound.playVictory();
         showToast(lang === 'ar' ? 'تم إنشاء الحساب بنجاح! نتمنى لك تجربة ممتعة' : 'Account created successfully!');
       } else {
         sound.playWrong();
-        setErrorMessage(res.error || (lang === 'ar' ? 'فشل إنشاء الحساب' : 'Registration failed'));
+        setDiagnostic({
+          message: res.error || (lang === 'ar' ? 'تعذر إنشاء الحساب، يرجى المحاولة مجدداً' : 'Registration failed'),
+          suggestion: res.suggestion || (lang === 'ar' ? 'تأكد من اختيار اسم غير مستخدم مسبقاً والتأكد من البيانات' : 'Ensure username is unique and credentials are valid'),
+          code: res.code || 'REGISTER_ERROR',
+          field: res.field,
+        });
       }
     }
   };
@@ -113,7 +227,7 @@ export const AuthScreen: React.FC = () => {
   // Google Sign-In with Firebase & Seamless Fallback
   const handleGoogleSignIn = async (chosenEmail?: string) => {
     sound.playClick();
-    setErrorMessage(null);
+    setDiagnostic(null);
     setLoading(true);
 
     try {
@@ -127,28 +241,53 @@ export const AuthScreen: React.FC = () => {
         showToast(lang === 'ar' ? 'تم تسجيل الدخول بحساب Google بنجاح!' : 'Logged in with Google successfully!');
       } else {
         sound.playWrong();
-        setErrorMessage(res.error || (lang === 'ar' ? 'تعذر تسجيل الدخول بحساب Google' : 'Google login failed'));
+        setDiagnostic({
+          message: res.error || (lang === 'ar' ? 'تعذر تسجيل الدخول بحساب Google' : 'Google login failed'),
+          suggestion: res.suggestion || (lang === 'ar' ? 'يرجى التأكد من اتصال الإنترنت أو استخدام تسجيل الدخول بالاسم' : 'Check connection or login with username'),
+          code: res.code || 'GOOGLE_AUTH_ERROR',
+        });
       }
     } catch (err: any) {
       console.error('Google Sign In error:', err);
       sound.playWrong();
-      setErrorMessage(err.message || 'Google Sign-In failed');
+      setDiagnostic({
+        message: err.message || (lang === 'ar' ? 'فشل تسجيل الدخول بحساب Google' : 'Google Sign-In failed'),
+        suggestion: lang === 'ar' ? 'تأكد من اتصال الإنترنت وحاول مجدداً' : 'Check connection and try again',
+        code: 'GOOGLE_EXCEPTION',
+      });
     } finally {
       setLoading(false);
     }
   };
 
+  // Realtime checks for register
+  const isUsernameValid = username.trim().length >= 2;
+  const isPasswordLongEnough = password.length >= 6;
+  const isPasswordMatching = confirmPassword.length > 0 && password === confirmPassword;
+  const isEmailFormatValid = !email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+
   return (
-    <div className="min-h-screen bg-slate-950 text-white flex flex-col justify-between p-4 selection:bg-indigo-500 selection:text-white">
-      {/* Top Header Controls (Language, Theme, Sound) */}
-      <div className="max-w-md w-full mx-auto flex items-center justify-between py-2">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between p-4 sm:p-6 select-none relative overflow-x-hidden">
+      {/* Background ambient decorative glow */}
+      <div className="fixed inset-0 pointer-events-none opacity-25">
+        <div className="absolute top-1/4 start-1/4 w-80 h-80 bg-indigo-600/30 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 end-1/4 w-80 h-80 bg-purple-600/30 rounded-full blur-3xl" />
+      </div>
+
+      {/* Top Bar with Branding & Settings */}
+      <div className="max-w-md w-full mx-auto flex items-center justify-between z-10 py-1">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-black text-lg shadow-md">
-            9
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center font-black text-white text-base shadow-lg shadow-indigo-500/25">
+            S
           </div>
-          <span className="font-extrabold text-sm tracking-tight text-slate-100">
-            {t.appTitle}
-          </span>
+          <div>
+            <h1 className="font-black text-sm tracking-wide bg-gradient-to-r from-white via-indigo-200 to-indigo-400 bg-clip-text text-transparent">
+              {t.appTitle}
+            </h1>
+            <p className="text-[10px] text-slate-400 font-medium">
+              {lang === 'ar' ? 'نظام الحسابات الآمن' : 'Secure Player Accounts'}
+            </p>
+          </div>
         </div>
 
         <div className="flex items-center gap-1.5">
@@ -156,6 +295,7 @@ export const AuthScreen: React.FC = () => {
             onClick={toggleSound}
             className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-900 transition-colors cursor-pointer"
             title={isMuted ? t.soundOff : t.soundOn}
+            type="button"
           >
             {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4" />}
           </button>
@@ -164,6 +304,7 @@ export const AuthScreen: React.FC = () => {
             onClick={toggleTheme}
             className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-900 transition-colors cursor-pointer"
             title={theme === 'dark' ? t.themeLight : t.themeDark}
+            type="button"
           >
             {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-indigo-400" />}
           </button>
@@ -174,6 +315,7 @@ export const AuthScreen: React.FC = () => {
               setLang(lang === 'ar' ? 'en' : 'ar');
             }}
             className="px-2.5 h-8 rounded-lg flex items-center gap-1 text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-900 transition-colors cursor-pointer"
+            type="button"
           >
             <Languages className="w-3.5 h-3.5" />
             <span>{lang === 'ar' ? 'English' : 'العربية'}</span>
@@ -182,14 +324,14 @@ export const AuthScreen: React.FC = () => {
       </div>
 
       {/* Main Authentication Card */}
-      <div className="max-w-md w-full mx-auto my-auto bg-slate-900/90 border-2 border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-md flex flex-col gap-5">
+      <div className="max-w-md w-full mx-auto my-auto bg-slate-900/90 border-2 border-slate-800 rounded-3xl p-5 sm:p-7 shadow-2xl backdrop-blur-md flex flex-col gap-4 z-10">
         {/* Title & Badge */}
-        <div className="text-center space-y-1.5">
+        <div className="text-center space-y-1">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-xs font-bold">
             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
             <span>{t.authRequired}</span>
           </div>
-          <h2 className="text-2xl font-black text-white">
+          <h2 className="text-xl sm:text-2xl font-black text-white">
             {mode === 'login' ? t.welcomeBack : t.createYourAccount}
           </h2>
           <p className="text-xs text-slate-400 leading-relaxed max-w-xs mx-auto">
@@ -201,11 +343,7 @@ export const AuthScreen: React.FC = () => {
         <div className="grid grid-cols-2 p-1 bg-slate-950 rounded-2xl border border-slate-800">
           <button
             type="button"
-            onClick={() => {
-              sound.playClick();
-              setMode('login');
-              setErrorMessage(null);
-            }}
+            onClick={() => handleTabSwitch('login')}
             className={`py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
               mode === 'login'
                 ? 'bg-indigo-600 text-white shadow-md'
@@ -216,11 +354,7 @@ export const AuthScreen: React.FC = () => {
           </button>
           <button
             type="button"
-            onClick={() => {
-              sound.playClick();
-              setMode('register');
-              setErrorMessage(null);
-            }}
+            onClick={() => handleTabSwitch('register')}
             className={`py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
               mode === 'register'
                 ? 'bg-indigo-600 text-white shadow-md'
@@ -231,23 +365,83 @@ export const AuthScreen: React.FC = () => {
           </button>
         </div>
 
-        {/* Error message alert */}
-        {errorMessage && (
-          <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs flex items-center gap-2 animate-fade-in">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{errorMessage}</span>
+        {/* Dedicated Diagnostic Feedback Banner (سبب المشكلة وحلها وتفاصيلها) */}
+        {diagnostic && (
+          <div className="p-3.5 rounded-2xl bg-rose-500/10 border-2 border-rose-500/30 text-rose-300 text-xs flex flex-col gap-2 animate-fade-in shadow-lg">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-start gap-2 min-w-0">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <div className="font-extrabold text-white text-xs leading-snug">
+                    {diagnostic.message}
+                  </div>
+                  {diagnostic.suggestion && (
+                    <div className="text-[11px] text-amber-300 flex items-start gap-1 font-medium mt-1">
+                      <HelpCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-400" />
+                      <span>{diagnostic.suggestion}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Actions based on error type */}
+            <div className="flex items-center justify-between pt-2 border-t border-rose-500/20 text-[11px] gap-2 flex-wrap">
+              {diagnostic.code && (
+                <div className="px-2 py-0.5 rounded-md bg-rose-950/80 border border-rose-800 text-[10px] font-mono text-rose-300">
+                  {lang === 'ar' ? 'الرمز:' : 'Code:'} {diagnostic.code}
+                </div>
+              )}
+
+              <div className="flex items-center gap-1.5 ms-auto">
+                {diagnostic.code === 'USERNAME_ALREADY_EXISTS' && mode === 'register' && (
+                  <button
+                    type="button"
+                    onClick={applySuggestedUsername}
+                    className="px-2 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 font-bold text-[10px] flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <Wand2 className="w-3 h-3" />
+                    <span>{lang === 'ar' ? 'استخدم اسماً مقترحاً' : 'Apply suggestion'}</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleCopyDiagnostics}
+                  className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                  title={lang === 'ar' ? 'نسخ تفاصيل المشكلة لإرسالها للدعم أو الأصدقاء' : 'Copy diagnostic details'}
+                >
+                  {copiedDiag ? (
+                    <>
+                      <Check className="w-3 h-3 text-emerald-400" />
+                      <span className="text-emerald-400">{lang === 'ar' ? 'تم النسخ' : 'Copied'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3 h-3" />
+                      <span>{lang === 'ar' ? 'نسخ تفاصيل الخطأ' : 'Copy details'}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-3.5">
+        <form onSubmit={handleSubmit} className="space-y-3">
           {mode === 'register' && (
             <>
-              {/* Username */}
+              {/* Username Input with live validation */}
               <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1 text-start">
-                  {t.username}
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-300 text-start">
+                    {t.username}
+                  </label>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    {username.trim().length}/25
+                  </span>
+                </div>
                 <div className="relative">
                   <User className="w-4 h-4 text-slate-500 absolute top-1/2 -translate-y-1/2 start-3" />
                   <input
@@ -255,16 +449,37 @@ export const AuthScreen: React.FC = () => {
                     required
                     maxLength={25}
                     value={username}
-                    onChange={(e) => setUsername(e.target.value)}
+                    onChange={(e) => {
+                      setUsername(e.target.value);
+                      if (diagnostic?.field === 'username') setDiagnostic(null);
+                    }}
                     placeholder={lang === 'ar' ? 'اسم اللاعب (مثال: البطل_سودوكو)' : 'Player username'}
-                    className="w-full ps-9 pe-3 py-2.5 text-xs font-bold rounded-xl border border-slate-700 bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className={`w-full ps-9 pe-8 py-2.5 text-xs font-bold rounded-xl border bg-slate-950 text-white focus:outline-none transition-all ${
+                      diagnostic?.field === 'username'
+                        ? 'border-rose-500 focus:ring-2 focus:ring-rose-500'
+                        : isUsernameValid
+                        ? 'border-emerald-600/70 focus:ring-2 focus:ring-emerald-500'
+                        : 'border-slate-700 focus:ring-2 focus:ring-indigo-500'
+                    }`}
                   />
+                  {isUsernameValid && (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 absolute top-1/2 -translate-y-1/2 end-2.5" />
+                  )}
+                </div>
+                {/* Field feedback hint */}
+                <div className="flex items-center gap-1 mt-1 text-[10px] text-slate-400">
+                  <Info className="w-3 h-3 text-slate-500" />
+                  <span>
+                    {lang === 'ar'
+                      ? 'يجب ألا يقل عن حرفين، ويمكن استخدام الحروف والأرقام والشرطة السفلية'
+                      : 'Must be 2+ characters, letters, numbers & underscores allowed'}
+                  </span>
                 </div>
               </div>
 
               {/* Avatar Selector */}
               <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1.5 text-start">
+                <label className="block text-xs font-bold text-slate-300 mb-1 text-start">
                   {t.avatarSelect}
                 </label>
                 <div className="grid grid-cols-8 gap-1.5">
@@ -290,18 +505,35 @@ export const AuthScreen: React.FC = () => {
 
               {/* Email (Optional) */}
               <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1 text-start">
-                  {t.email} ({lang === 'ar' ? 'اختياري' : 'optional'})
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-300 text-start">
+                    {t.email} ({lang === 'ar' ? 'اختياري' : 'optional'})
+                  </label>
+                  <span className="text-[10px] text-indigo-400">
+                    {lang === 'ar' ? 'لحفظ السحاب واستعادة الحساب' : 'For cloud backup'}
+                  </span>
+                </div>
                 <div className="relative">
                   <Mail className="w-4 h-4 text-slate-500 absolute top-1/2 -translate-y-1/2 start-3" />
                   <input
                     type="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (diagnostic?.field === 'email') setDiagnostic(null);
+                    }}
                     placeholder="player@example.com"
-                    className="w-full ps-9 pe-3 py-2.5 text-xs rounded-xl border border-slate-700 bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className={`w-full ps-9 pe-8 py-2.5 text-xs rounded-xl border bg-slate-950 text-white focus:outline-none transition-all ${
+                      diagnostic?.field === 'email'
+                        ? 'border-rose-500 focus:ring-2 focus:ring-rose-500'
+                        : email.trim() && isEmailFormatValid
+                        ? 'border-emerald-600/70 focus:ring-2 focus:ring-emerald-500'
+                        : 'border-slate-700 focus:ring-2 focus:ring-indigo-500'
+                    }`}
                   />
+                  {email.trim() && isEmailFormatValid && (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 absolute top-1/2 -translate-y-1/2 end-2.5" />
+                  )}
                 </div>
               </div>
             </>
@@ -318,19 +550,47 @@ export const AuthScreen: React.FC = () => {
                   type="text"
                   required
                   value={emailOrUser}
-                  onChange={(e) => setEmailOrUser(e.target.value)}
-                  placeholder={lang === 'ar' ? 'أدخل اسم المستخدم أو البريد' : 'Username or email'}
-                  className="w-full ps-9 pe-3 py-2.5 text-xs font-bold rounded-xl border border-slate-700 bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  onChange={(e) => {
+                    setEmailOrUser(e.target.value);
+                    if (diagnostic?.field === 'identifier') setDiagnostic(null);
+                  }}
+                  placeholder={lang === 'ar' ? 'أدخل اسم المستخدم أو البريد المسجل' : 'Username or registered email'}
+                  className={`w-full ps-9 pe-3 py-2.5 text-xs font-bold rounded-xl border bg-slate-950 text-white focus:outline-none transition-all ${
+                    diagnostic?.field === 'identifier'
+                      ? 'border-rose-500 focus:ring-2 focus:ring-rose-500'
+                      : 'border-slate-700 focus:ring-2 focus:ring-indigo-500'
+                  }`}
                 />
               </div>
             </div>
           )}
 
-          {/* Password */}
+          {/* Password with live indicator */}
           <div>
-            <label className="block text-xs font-bold text-slate-300 mb-1 text-start">
-              {t.password}
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-bold text-slate-300 text-start">
+                {t.password}
+              </label>
+              {mode === 'register' && (
+                <span
+                  className={`text-[10px] font-bold ${
+                    password.length === 0
+                      ? 'text-slate-500'
+                      : isPasswordLongEnough
+                      ? 'text-emerald-400'
+                      : 'text-amber-400'
+                  }`}
+                >
+                  {isPasswordLongEnough
+                    ? lang === 'ar'
+                      ? '✓ طول كلمة المرور ممتاز'
+                      : '✓ Length OK'
+                    : lang === 'ar'
+                    ? `${password.length} من 6 خانات مطلوبة`
+                    : `${password.length}/6 required`}
+                </span>
+              )}
+            </div>
             <div className="relative">
               <Lock className="w-4 h-4 text-slate-500 absolute top-1/2 -translate-y-1/2 start-3" />
               <input
@@ -338,19 +598,48 @@ export const AuthScreen: React.FC = () => {
                 required
                 minLength={6}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (diagnostic?.field === 'password') setDiagnostic(null);
+                }}
                 placeholder="••••••••"
-                className="w-full ps-9 pe-3 py-2.5 text-xs rounded-xl border border-slate-700 bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className={`w-full ps-9 pe-8 py-2.5 text-xs rounded-xl border bg-slate-950 text-white focus:outline-none transition-all ${
+                  diagnostic?.field === 'password'
+                    ? 'border-rose-500 focus:ring-2 focus:ring-rose-500'
+                    : mode === 'register' && isPasswordLongEnough
+                    ? 'border-emerald-600/70 focus:ring-2 focus:ring-emerald-500'
+                    : 'border-slate-700 focus:ring-2 focus:ring-indigo-500'
+                }`}
               />
+              {mode === 'register' && isPasswordLongEnough && (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 absolute top-1/2 -translate-y-1/2 end-2.5" />
+              )}
             </div>
           </div>
 
           {/* Confirm Password (only on Register) */}
           {mode === 'register' && (
             <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1 text-start">
-                {t.confirmPassword}
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-bold text-slate-300 text-start">
+                  {t.confirmPassword}
+                </label>
+                {confirmPassword.length > 0 && (
+                  <span
+                    className={`text-[10px] font-bold ${
+                      isPasswordMatching ? 'text-emerald-400' : 'text-rose-400'
+                    }`}
+                  >
+                    {isPasswordMatching
+                      ? lang === 'ar'
+                        ? '✓ كلمتا المرور متطابقتان'
+                        : '✓ Passwords match'
+                      : lang === 'ar'
+                      ? '✗ غير متطابقتين بعد'
+                      : '✗ Do not match yet'}
+                  </span>
+                )}
+              </div>
               <div className="relative">
                 <KeyRound className="w-4 h-4 text-slate-500 absolute top-1/2 -translate-y-1/2 start-3" />
                 <input
@@ -358,10 +647,22 @@ export const AuthScreen: React.FC = () => {
                   required
                   minLength={6}
                   value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  onChange={(e) => {
+                    setConfirmPassword(e.target.value);
+                    if (diagnostic?.field === 'confirmPassword') setDiagnostic(null);
+                  }}
                   placeholder="••••••••"
-                  className="w-full ps-9 pe-3 py-2.5 text-xs rounded-xl border border-slate-700 bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className={`w-full ps-9 pe-8 py-2.5 text-xs rounded-xl border bg-slate-950 text-white focus:outline-none transition-all ${
+                    confirmPassword.length > 0 && !isPasswordMatching
+                      ? 'border-rose-500 focus:ring-2 focus:ring-rose-500'
+                      : isPasswordMatching
+                      ? 'border-emerald-600/70 focus:ring-2 focus:ring-emerald-500'
+                      : 'border-slate-700 focus:ring-2 focus:ring-indigo-500'
+                  }`}
                 />
+                {isPasswordMatching && (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 absolute top-1/2 -translate-y-1/2 end-2.5" />
+                )}
               </div>
             </div>
           )}
@@ -372,12 +673,18 @@ export const AuthScreen: React.FC = () => {
             disabled={loading}
             className="w-full py-3 mt-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-extrabold text-xs shadow-lg transition-all cursor-pointer active:scale-98 flex items-center justify-center gap-2"
           >
-            {mode === 'login' ? <LogIn className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
+            {loading ? (
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : mode === 'login' ? (
+              <LogIn className="w-4 h-4" />
+            ) : (
+              <UserPlus className="w-4 h-4" />
+            )}
             <span>
               {loading
                 ? lang === 'ar'
-                  ? 'جارٍ التحقق...'
-                  : 'Verifying...'
+                  ? 'جارٍ التحقق وتأكيد البيانات...'
+                  : 'Verifying credentials...'
                 : mode === 'login'
                 ? t.login
                 : t.register}
@@ -386,7 +693,7 @@ export const AuthScreen: React.FC = () => {
         </form>
 
         {/* Divider */}
-        <div className="flex items-center gap-3 my-1">
+        <div className="flex items-center gap-3 my-0.5">
           <div className="flex-1 h-[1px] bg-slate-800" />
           <span className="text-[11px] text-slate-500 uppercase">{lang === 'ar' ? 'أو' : 'OR'}</span>
           <div className="flex-1 h-[1px] bg-slate-800" />
@@ -397,9 +704,9 @@ export const AuthScreen: React.FC = () => {
           type="button"
           onClick={() => setShowGoogleModal(true)}
           disabled={loading}
-          className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold text-xs border border-slate-700 shadow-sm transition-all cursor-pointer flex items-center justify-center gap-2.5 active:scale-98"
+          className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-100 font-bold text-xs border border-slate-700 shadow-sm transition-all cursor-pointer flex items-center justify-center gap-2.5 active:scale-98"
         >
-          <svg className="w-4 h-4" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
             <path
               fill="#4285F4"
               d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -426,7 +733,7 @@ export const AuthScreen: React.FC = () => {
             <div className="w-full max-w-sm bg-slate-900 border-2 border-slate-700 rounded-3xl p-6 shadow-2xl flex flex-col gap-4 text-start">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <svg className="w-5 h-5" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
                     <path
                       fill="#4285F4"
                       d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -506,7 +813,15 @@ export const AuthScreen: React.FC = () => {
                   className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
                 >
                   <LogIn className="w-3.5 h-3.5" />
-                  <span>{loading ? (lang === 'ar' ? 'جارٍ الدخول...' : 'Logging in...') : (lang === 'ar' ? 'دخول بحساب Google' : 'Sign In')}</span>
+                  <span>
+                    {loading
+                      ? lang === 'ar'
+                        ? 'جارٍ الدخول...'
+                        : 'Logging in...'
+                      : lang === 'ar'
+                      ? 'دخول بحساب Google'
+                      : 'Sign In'}
+                  </span>
                 </button>
                 <button
                   type="button"
@@ -528,7 +843,7 @@ export const AuthScreen: React.FC = () => {
       </div>
 
       {/* Footer copyright */}
-      <div className="text-center text-[11px] text-slate-600 py-2">
+      <div className="text-center text-[11px] text-slate-600 py-1 z-10">
         Sudoku Master &copy; {new Date().getFullYear()} &middot; {lang === 'ar' ? 'جميع الحقوق محفوظة' : 'All Rights Reserved'}
       </div>
     </div>

@@ -17,9 +17,11 @@ import {
   OfflineProgress,
   Room,
   MatchState,
+  AuthResponse,
 } from '../types';
 import { translations } from '../utils/i18n';
 import { sound } from '../utils/sound';
+import { safeStorage } from '../utils/storage';
 
 export type Screen =
   | 'home'
@@ -56,9 +58,9 @@ interface GameContextType {
   user: User | null;
   profile: Profile | null;
   updateProfileData: (username: string, avatar: string) => Promise<boolean>;
-  loginUser: (emailOrUser: string, pass: string) => Promise<{ success: boolean; error?: string }>;
-  registerUser: (username: string, email?: string, pass?: string, avatar?: string) => Promise<{ success: boolean; error?: string }>;
-  loginWithGoogle: (email: string, displayName?: string, avatar?: string) => Promise<{ success: boolean; error?: string }>;
+  loginUser: (emailOrUser: string, pass: string) => Promise<AuthResponse>;
+  registerUser: (username: string, email?: string, pass?: string, avatar?: string) => Promise<AuthResponse>;
+  loginWithGoogle: (email: string, displayName?: string, avatar?: string) => Promise<AuthResponse>;
   logoutUser: () => void;
 
   // Offline Mode
@@ -87,11 +89,11 @@ const GameContext = createContext<GameContextType | undefined>(undefined);
 export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Language & Theme
   const [lang, setLangState] = useState<Language>(() => {
-    return (localStorage.getItem('sudoku_lang') as Language) || 'ar';
+    return (safeStorage.getItem('sudoku_lang') as Language) || 'ar';
   });
 
   const [theme, setThemeState] = useState<Theme>(() => {
-    return (localStorage.getItem('sudoku_theme') as Theme) || 'dark';
+    return (safeStorage.getItem('sudoku_theme') as Theme) || 'dark';
   });
 
   const [isMuted, setIsMuted] = useState<boolean>(() => sound.isMuted());
@@ -130,14 +132,14 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const setLang = (newLang: Language) => {
     setLangState(newLang);
-    localStorage.setItem('sudoku_lang', newLang);
+    safeStorage.setItem('sudoku_lang', newLang);
     document.documentElement.dir = newLang === 'ar' ? 'rtl' : 'ltr';
     document.documentElement.lang = newLang;
   };
 
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme);
-    localStorage.setItem('sudoku_theme', newTheme);
+    safeStorage.setItem('sudoku_theme', newTheme);
     if (newTheme === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
@@ -216,7 +218,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         setUser(initialUserData);
-        localStorage.setItem('sudoku_user_id', userId);
+        safeStorage.setItem('sudoku_user_id', userId);
 
         // Fetch offline progress
         fetch(`/api/offline/progress/${userId}`)
@@ -230,7 +232,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .catch(() => {});
       } else {
         // Firebase user is null: check if local custom user session exists
-        const savedUserId = localStorage.getItem('sudoku_user_id');
+        const savedUserId = safeStorage.getItem('sudoku_user_id');
         if (!savedUserId) {
           setUser(null);
           setProfile(null);
@@ -240,7 +242,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           const res = await fetch(`/api/profile/${savedUserId}`);
           if (!res.ok) {
-            localStorage.removeItem('sudoku_user_id');
+            safeStorage.removeItem('sudoku_user_id');
             setUser(null);
             setProfile(null);
             return;
@@ -453,32 +455,164 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const loginUser = async (emailOrUser: string, pass: string) => {
+  const formatAuthError = (
+    rawError: any,
+    defaultMessageAr: string,
+    defaultMessageEn: string
+  ): AuthResponse => {
+    if (!rawError) {
+      return {
+        success: false,
+        error: lang === 'ar' ? defaultMessageAr : defaultMessageEn,
+      };
+    }
+
+    if (typeof rawError === 'object' && rawError.error) {
+      return {
+        success: false,
+        error: lang === 'ar' ? (rawError.error || defaultMessageAr) : (rawError.errorEn || rawError.error || defaultMessageEn),
+        code: rawError.code,
+        suggestion: rawError.suggestion,
+        field: rawError.field,
+      };
+    }
+
+    const errStr = typeof rawError === 'string' ? rawError : rawError.message || rawError.code || String(rawError);
+    const code = (rawError.code || '').toLowerCase();
+
+    if (code.includes('email-already-in-use')) {
+      return {
+        success: false,
+        error: lang === 'ar' ? 'البريد الإلكتروني مسجل بالفعل لمستخدم آخر' : 'This email address is already registered to another account',
+        code: 'auth/email-already-in-use',
+        suggestion: lang === 'ar' ? 'انتقل إلى تبويب "تسجيل الدخول" للدخول بهذا البريد، أو استخدم بريداً مختلفاً' : 'Please switch to "Login" or use a different email',
+        field: 'email',
+      };
+    }
+
+    if (code.includes('weak-password')) {
+      return {
+        success: false,
+        error: lang === 'ar' ? 'كلمة المرور ضعيفة جداً (يجب ألا تقل عن 6 خانات)' : 'Password is too weak (must be at least 6 characters)',
+        code: 'auth/weak-password',
+        suggestion: lang === 'ar' ? 'اختر كلمة مرور مكونة من 6 أحرف أو أرقام على الأقل لتأمين حسابك' : 'Choose a password with at least 6 characters',
+        field: 'password',
+      };
+    }
+
+    if (code.includes('invalid-email')) {
+      return {
+        success: false,
+        error: lang === 'ar' ? 'صيغة البريد الإلكتروني غير صالحة' : 'Invalid email format',
+        code: 'auth/invalid-email',
+        suggestion: lang === 'ar' ? 'تأكد من كتابة البريد مثل player@example.com أو اترك الحقل فارغاً (اختياري)' : 'Make sure email is formatted like player@example.com',
+        field: 'email',
+      };
+    }
+
+    if (code.includes('wrong-password') || code.includes('invalid-credential')) {
+      return {
+        success: false,
+        error: lang === 'ar' ? 'كلمة المرور أو بيانات الدخول غير صحيحة' : 'Incorrect password or login credentials',
+        code: 'auth/wrong-password',
+        suggestion: lang === 'ar' ? 'تأكد من كتابة كلمة المرور بالشكل الصحيح وتحقق من زر Caps Lock' : 'Please check your password and caps lock',
+        field: 'password',
+      };
+    }
+
+    if (code.includes('user-not-found')) {
+      return {
+        success: false,
+        error: lang === 'ar' ? 'لم يتم العثور على أي حساب مسجل بهذه البيانات' : 'No account found with these credentials',
+        code: 'auth/user-not-found',
+        suggestion: lang === 'ar' ? 'تأكد من كتابة الاسم أو البريد أو اضغط على "إنشاء حساب" للتسجيل كلاعب جديد' : 'Check your credentials or click "Create Account"',
+        field: 'identifier',
+      };
+    }
+
+    if (code.includes('too-many-requests')) {
+      return {
+        success: false,
+        error: lang === 'ar' ? 'محاولات دخول كثيرة خاطئة، تم تعليق المحاولات مؤقتاً لحماية الحساب' : 'Too many failed attempts. Temporary lockout active',
+        code: 'auth/too-many-requests',
+        suggestion: lang === 'ar' ? 'يرجى الانتظار دقيقتين ثم إعادة المحاولة بأمان' : 'Please wait a couple of minutes before trying again',
+      };
+    }
+
+    if (code.includes('network-request-failed')) {
+      return {
+        success: false,
+        error: lang === 'ar' ? 'تعذر الاتصال بالخادم بسبب مشكلة في شبكة الإنترنت' : 'Network request failed. Please check your internet connection',
+        code: 'auth/network-request-failed',
+        suggestion: lang === 'ar' ? 'تحقق من اتصال الشبكة بالهاتف أو الحاسوب ثم أعد المحاولة' : 'Check your internet connection and retry',
+      };
+    }
+
+    if (code.includes('popup-closed-by-user')) {
+      return {
+        success: false,
+        error: lang === 'ar' ? 'تم إغلاق نافذة تسجيل الدخول بـ Google قبل إكمال العملية' : 'Google Sign-In popup was closed before completion',
+        code: 'auth/popup-closed-by-user',
+        suggestion: lang === 'ar' ? 'أعد المحاولة ولا تغلق النافذة حتى يكتمل تسجيل الدخول' : 'Please retry and keep the popup open until complete',
+      };
+    }
+
+    if (code.includes('popup-blocked')) {
+      return {
+        success: false,
+        error: lang === 'ar' ? 'المتصفح حظر النافذة المنبثقة لتسجيل الدخول بـ Google' : 'Popup blocked by browser',
+        code: 'auth/popup-blocked',
+        suggestion: lang === 'ar' ? 'يرجى تفعيل النوافذ المنبثقة لهذا الموقع من إعدادات المتصفح' : 'Allow popups for this site in your browser settings',
+      };
+    }
+
+    return {
+      success: false,
+      error: errStr || (lang === 'ar' ? defaultMessageAr : defaultMessageEn),
+      code: rawError.code || 'UNKNOWN_ERROR',
+      suggestion: lang === 'ar' ? 'يرجى مراجعة البيانات المدخلة والمحاولة مجدداً' : 'Please review entered details and try again',
+    };
+  };
+
+  const loginUser = async (emailOrUser: string, pass: string): Promise<AuthResponse> => {
     try {
-      const isEmail = emailOrUser.includes('@');
+      const cleanId = emailOrUser.trim();
+      if (!cleanId) {
+        return {
+          success: false,
+          error: lang === 'ar' ? 'يرجى إدخال اسم المستخدم أو البريد الإلكتروني' : 'Please enter your username or email',
+          code: 'MISSING_IDENTIFIER',
+          field: 'identifier',
+          suggestion: lang === 'ar' ? 'أدخل اسم المستخدم الذي أنشأت به حسابك' : 'Enter your registered username or email',
+        };
+      }
+
+      if (!pass) {
+        return {
+          success: false,
+          error: lang === 'ar' ? 'يرجى إدخال كلمة المرور' : 'Please enter your password',
+          code: 'MISSING_PASSWORD',
+          field: 'password',
+          suggestion: lang === 'ar' ? 'أدخل كلمة المرور الخاصة بحسابك' : 'Enter your account password',
+        };
+      }
+
+      const isEmail = cleanId.includes('@');
 
       // 1. If email format & Firebase is configured, authenticate via Firebase Auth
       if (isEmail && isFirebaseConfigured) {
         try {
-          const userCredential = await signInWithEmailAndPassword(auth, emailOrUser.trim(), pass);
+          const userCredential = await signInWithEmailAndPassword(auth, cleanId, pass);
           if (userCredential.user) {
-            // onAuthStateChanged will handle setting the user and profile
             return { success: true };
           }
         } catch (firebaseErr: any) {
-          console.warn('Firebase signInWithEmailAndPassword error:', firebaseErr);
-          const code = firebaseErr.code || '';
-          if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
-            return {
-              success: false,
-              error: lang === 'ar' ? 'كلمة المرور أو البريد الإلكتروني غير صحيح' : 'Invalid email or password',
-            };
+          const code = (firebaseErr.code || '').toLowerCase();
+          if (code.includes('wrong-password') || code.includes('invalid-credential')) {
+            return formatAuthError(firebaseErr, 'بيانات الدخول غير صحيحة', 'Invalid credentials');
           }
-          if (code === 'auth/too-many-requests') {
-            return {
-              success: false,
-              error: lang === 'ar' ? 'محاولات دخول كثيرة خاطئة، يرجى الانتظار قليلاً' : 'Too many attempts, please try again later',
-            };
+          if (code.includes('too-many-requests')) {
+            return formatAuthError(firebaseErr, 'محاولات دخول كثيرة خاطئة', 'Too many attempts');
           }
           // If user not found in Firebase, attempt backend database verification
         }
@@ -489,125 +623,185 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          [isEmail ? 'email' : 'username']: emailOrUser.trim(),
+          [isEmail ? 'email' : 'username']: cleanId,
           password: pass,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) return { success: false, error: data.error };
+
+      let data: any = {};
+      try {
+        const text = await res.text();
+        data = JSON.parse(text);
+      } catch {
+        return {
+          success: false,
+          error: lang === 'ar' ? `استجابة غير متوقعة من الخادم (رمز الحالة ${res.status})` : `Server response error (${res.status})`,
+          code: `HTTP_${res.status}`,
+          suggestion: lang === 'ar' ? 'يرجى التحقق من اتصال الإنترنت وإعادة المحاولة' : 'Please check connection and retry',
+        };
+      }
+
+      if (!res.ok || !data.user) {
+        return formatAuthError(data, 'فشل تسجيل الدخول، يرجى التأكد من البيانات', 'Login failed');
+      }
 
       setUser(data.user);
       setProfile(data.profile);
-      localStorage.setItem('sudoku_user_id', data.user.id);
+      safeStorage.setItem('sudoku_user_id', data.user.id);
 
       // Fetch progress
       const progRes = await fetch(`/api/offline/progress/${data.user.id}`);
-      const progData = await progRes.json();
+      const progData = await progRes.json().catch(() => ({}));
       if (progData.progress) {
         setOfflineProgress(progData.progress);
         setCurrentOfflineLevel(progData.progress.unlockedLevel || 1);
       }
 
       return { success: true };
-    } catch {
+    } catch (err: any) {
+      console.error('Login caught exception:', err);
       return {
         success: false,
-        error: lang === 'ar' ? 'تعذر الاتصال بالخادم، يرجى المحاولة لاحقاً' : 'Connection failed',
+        error: lang === 'ar' ? `تعذر تسجيل الدخول: ${err?.message || 'خطأ في الاتصال'}` : `Login failed: ${err?.message || 'Connection error'}`,
+        code: err?.name || 'CLIENT_EXCEPTION',
+        suggestion: lang === 'ar' ? 'يرجى التحقق من الاتصال بالإنترنت والمحاولة مجدداً' : 'Please check your connection and retry',
       };
     }
   };
 
-  const registerUser = async (username: string, email?: string, pass?: string, avatar?: string) => {
+  const registerUser = async (
+    username: string,
+    email?: string,
+    pass?: string,
+    avatar?: string
+  ): Promise<AuthResponse> => {
     try {
       const cleanUsername = username.trim();
-      const cleanEmail = email ? email.trim() : undefined;
+      const cleanEmail = email && email.trim() ? email.trim() : undefined;
 
-      // 1. If email & password provided and Firebase configured, create account in Firebase Auth
+      // 1. Client-side input validation
+      if (!cleanUsername || cleanUsername.length < 2) {
+        return {
+          success: false,
+          error: lang === 'ar' ? 'اسم المستخدم قصير جداً؛ يجب أن يتكون من حرفين على الأقل' : 'Username must be at least 2 characters',
+          code: 'USERNAME_TOO_SHORT',
+          field: 'username',
+          suggestion: lang === 'ar' ? 'يرجى اختيار اسم مكون من حرفين أو أكثر (مثال: بطل_السودوكو)' : 'Choose a username with 2 or more characters',
+        };
+      }
+
+      if (!pass || pass.length < 6) {
+        return {
+          success: false,
+          error: lang === 'ar' ? `كلمة المرور يجب أن تتكون من 6 خانات على الأقل (أدخلت ${pass ? pass.length : 0} خانات)` : `Password must be at least 6 characters (you entered ${pass ? pass.length : 0})`,
+          code: 'PASSWORD_TOO_SHORT',
+          field: 'password',
+          suggestion: lang === 'ar' ? 'اختر كلمة مرور مكونة من 6 أحرف أو أرقام لتأمين حسابك' : 'Choose a password with 6 or more characters',
+        };
+      }
+
+      if (cleanEmail) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(cleanEmail)) {
+          return {
+            success: false,
+            error: lang === 'ar' ? `صيغة البريد الإلكتروني "${cleanEmail}" غير صحيحة` : `Invalid email address format: "${cleanEmail}"`,
+            code: 'INVALID_EMAIL_FORMAT',
+            field: 'email',
+            suggestion: lang === 'ar' ? 'تأكد من كتابة البريد مثل name@example.com أو اتركه فارغاً (اختياري)' : 'Make sure email is formatted like name@example.com',
+          };
+        }
+      }
+
+      let firebaseUid: string | undefined = undefined;
+
+      // 2. If email & password provided and Firebase configured, create account in Firebase Auth
       if (cleanEmail && pass && isFirebaseConfigured) {
         try {
           const cred = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
           if (cred.user) {
+            firebaseUid = cred.user.uid;
             try {
-              await updateFirebaseProfile(cred.user, {
-                displayName: cleanUsername,
-              });
-            } catch (profileErr) {
-              console.warn('Firebase updateProfile error:', profileErr);
+              await updateFirebaseProfile(cred.user, { displayName: cleanUsername });
+            } catch (pErr) {
+              console.warn('Firebase updateProfile notice:', pErr);
             }
-
-            // Sync user data to backend database
-            const syncRes = await fetch('/api/auth/register', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                userId: cred.user.uid,
-                username: cleanUsername,
-                email: cleanEmail,
-                password: pass,
-                avatar: avatar || 'user_1',
-              }),
-            });
-            const syncData = await syncRes.json();
-            if (syncRes.ok && syncData.user) {
-              setUser(syncData.user);
-              setProfile(syncData.profile);
-              localStorage.setItem('sudoku_user_id', syncData.user.id);
-            }
-            return { success: true };
           }
         } catch (firebaseErr: any) {
-          console.warn('Firebase createUserWithEmailAndPassword error:', firebaseErr);
-          const code = firebaseErr.code || '';
-          if (code === 'auth/email-already-in-use') {
-            return {
-              success: false,
-              error: lang === 'ar' ? 'البريد الإلكتروني مسجل بالفعل' : 'Email is already registered',
-            };
+          console.warn('Firebase createUserWithEmailAndPassword notice:', firebaseErr);
+          const fCode = (firebaseErr.code || '').toLowerCase();
+          if (fCode.includes('email-already-in-use') || fCode.includes('weak-password') || fCode.includes('invalid-email')) {
+            return formatAuthError(firebaseErr, 'فشل إنشاء الحساب عبر Firebase', 'Firebase registration failed');
           }
-          if (code === 'auth/weak-password') {
-            return {
-              success: false,
-              error: lang === 'ar' ? 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' : 'Password must be at least 6 characters',
-            };
-          }
-          // If Firebase is in demo/offline mode, fallback to backend registration
+          // If operation-not-allowed or network error, proceed to direct backend registration
         }
       }
 
-      // 2. Direct backend registration
+      // 3. Register & sync in backend database
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: cleanUsername, email: cleanEmail, password: pass, avatar }),
+        body: JSON.stringify({
+          userId: firebaseUid,
+          username: cleanUsername,
+          email: cleanEmail,
+          password: pass,
+          avatar: avatar || 'user_1',
+        }),
       });
-      const data = await res.json();
-      if (!res.ok) return { success: false, error: data.error };
+
+      let data: any = {};
+      try {
+        const text = await res.text();
+        data = JSON.parse(text);
+      } catch {
+        return {
+          success: false,
+          error: lang === 'ar' ? `استجابة غير متوقعة من الخادم (رمز الحالة ${res.status})` : `Server response error (${res.status})`,
+          code: `HTTP_${res.status}`,
+          suggestion: lang === 'ar' ? 'يرجى التحقق من اتصال الإنترنت وإعادة المحاولة' : 'Please check connection and retry',
+        };
+      }
+
+      if (!res.ok || !data.user) {
+        return formatAuthError(data, 'تعذر إتمام إنشاء الحساب في الخادم', 'Registration failed on server');
+      }
 
       setUser(data.user);
       setProfile(data.profile);
-      localStorage.setItem('sudoku_user_id', data.user.id);
+      safeStorage.setItem('sudoku_user_id', data.user.id);
       return { success: true };
-    } catch {
+    } catch (err: any) {
+      console.error('Registration caught exception:', err);
       return {
         success: false,
-        error: lang === 'ar' ? 'تعذر إنشاء الحساب، يرجى المحاولة مجدداً' : 'Registration failed',
+        error: lang === 'ar' ? `تعذر إنشاء الحساب: ${err?.message || 'خطأ غير متوقع'}` : `Registration failed: ${err?.message || 'Unexpected error'}`,
+        code: err?.name || 'CLIENT_EXCEPTION',
+        suggestion: lang === 'ar' ? 'تأكد من الاتصال بالإنترنت أو أعد تحميل الصفحة' : 'Check connection or reload page',
       };
     }
   };
 
-  const loginWithGoogle = async (email: string, displayName?: string, avatar?: string) => {
+  const loginWithGoogle = async (
+    email: string,
+    displayName?: string,
+    avatar?: string
+  ): Promise<AuthResponse> => {
     try {
+      const cleanEmail = email.trim();
       // 1. Try Firebase Google Popup first if configured
       if (isFirebaseConfigured) {
         try {
           const result = await signInWithPopup(auth, googleProvider);
           if (result && result.user) {
-            // onAuthStateChanged will handle setting the user and profile
             return { success: true };
           }
         } catch (popupErr: any) {
-          console.warn('Firebase signInWithPopup error or blocked popup:', popupErr);
-          // Fall through to seamless Google backend sync
+          const pCode = (popupErr.code || '').toLowerCase();
+          if (pCode.includes('popup-closed-by-user')) {
+            return formatAuthError(popupErr, 'تم إلغاء تسجيل الدخول', 'Sign in cancelled');
+          }
+          console.warn('Firebase popup notice:', popupErr);
         }
       }
 
@@ -617,37 +811,50 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           googleUid: `goog_${Date.now()}`,
-          email: email.trim(),
-          displayName: displayName || email.split('@')[0],
+          email: cleanEmail,
+          displayName: displayName || cleanEmail.split('@')[0],
           avatar: avatar || 'user_1',
         }),
       });
-      const data = await res.json();
-      if (!res.ok) return { success: false, error: data.error };
+
+      let data: any = {};
+      try {
+        const text = await res.text();
+        data = JSON.parse(text);
+      } catch {
+        return {
+          success: false,
+          error: lang === 'ar' ? `استجابة غير متوقعة من خادم Google (رمز الحالة ${res.status})` : `Google auth server error (${res.status})`,
+        };
+      }
+
+      if (!res.ok || !data.user) {
+        return formatAuthError(data, 'تعذر تسجيل الدخول بحساب Google', 'Google login failed');
+      }
 
       setUser(data.user);
       setProfile(data.profile);
-      localStorage.setItem('sudoku_user_id', data.user.id);
+      safeStorage.setItem('sudoku_user_id', data.user.id);
 
       const progRes = await fetch(`/api/offline/progress/${data.user.id}`);
-      const progData = await progRes.json();
+      const progData = await progRes.json().catch(() => ({}));
       if (progData.progress) {
         setOfflineProgress(progData.progress);
         setCurrentOfflineLevel(progData.progress.unlockedLevel || 1);
       }
 
       return { success: true };
-    } catch {
+    } catch (err: any) {
       return {
         success: false,
-        error: lang === 'ar' ? 'تعذر تسجيل الدخول بحساب Google' : 'Google login failed',
+        error: lang === 'ar' ? `تعذر تسجيل الدخول بحساب Google: ${err?.message || 'خطأ في الاتصال'}` : `Google login failed: ${err?.message || 'Connection error'}`,
       };
     }
   };
 
   const logoutUser = () => {
     signOut(auth).catch((err) => console.warn('Firebase signOut error:', err));
-    localStorage.removeItem('sudoku_user_id');
+    safeStorage.removeItem('sudoku_user_id');
     setUser(null);
     setProfile(null);
     setScreen('home');
